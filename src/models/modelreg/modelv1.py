@@ -2,10 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
-from attention_mechanisms.bam import BAM
-from attention_mechanisms.eca import ECALayer
-from kan_convolutional.KANLinear import KAN
-from kan_convolutional.KANConv import KAN_Convolutional_Layer as KANCL
+from ..attention_mechanisms.bam import BAM
+from ..attention_mechanisms.eca import ECALayer
+from ..kan_convolutional.KANLinear import KAN
+from ..kan_convolutional.KANConv import KAN_Convolutional_Layer as KANCL
 
 
 class Autoencoder_Encoder(nn.Module):

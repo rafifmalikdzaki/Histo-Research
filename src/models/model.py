@@ -131,6 +131,14 @@ class Autoencoder_Decoder(nn.Module):
             nn.ELU(True),
         )
 
+        self.decoder3 = nn.Sequential(
+            nn.ConvTranspose2d(
+                384, 384, kernel_size=3, stride=2, padding=1, output_padding=1
+            ),
+            nn.BatchNorm2d(384),
+            nn.ELU(True),
+        )
+
         self.Output_Layer = nn.Sequential(
             nn.Conv2d(384, 3, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(3),
@@ -169,6 +177,7 @@ class Autoencoder_Decoder(nn.Module):
 
         out = self.decoder1(out)  # + residual2 + residualEnc2
         out = self.decoder2(out)  # + residual1 + residualEnc1
+        out = self.decoder3(out)
         out = self.Output_Layer(out)
         out = checkpoint(_reconstruction_forward, out, use_reentrant=False)
 

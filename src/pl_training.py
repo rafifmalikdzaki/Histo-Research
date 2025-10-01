@@ -8,6 +8,7 @@ from pytorch_lightning.callbacks import (
     EarlyStopping,
 )
 from models.model import DAE_KAN_Attention
+# from models.modelreg.modelv1 import DAE_KAN_Attention
 from histodata import *
 from torch.utils.data import Dataset, DataLoader
 import wandb
