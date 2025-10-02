@@ -41,7 +41,7 @@ class MainModel(pl.LightningModule):
         return mse_loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=0.01)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=0.0001)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=.2, patience=5, min_lr=1e-6)
 
         return {
@@ -54,13 +54,15 @@ class MainModel(pl.LightningModule):
 
 
 if __name__ == '__main__':
+    import os
+    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     train_ds = ImageDataset(*create_dataset('train'), device)
     test_ds = ImageDataset(*create_dataset('test'), device)
 
-    train_loader = DataLoader(train_ds, batch_size=12, shuffle=True)
-    test_loader = DataLoader(test_ds, batch_size=12, shuffle=False)
+    train_loader = DataLoader(train_ds, batch_size=4, shuffle=True)
+    test_loader = DataLoader(test_ds, batch_size=4, shuffle=False)
     x, y = next(iter(train_loader))
 
     model = MainModel().to(device)
@@ -83,6 +85,8 @@ if __name__ == '__main__':
         accelerator='auto',
         devices=1 if torch.cuda.is_available() else None,
         log_every_n_steps=10,
+        precision='16-mixed',
+        accumulate_grad_batches=3,
     )
 
     trainer.fit(model, train_loader, test_loader)

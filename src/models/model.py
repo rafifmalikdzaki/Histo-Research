@@ -15,10 +15,10 @@ class Autoencoder_Encoder(nn.Module):
         self.kan = KANCL(
             in_channels=64,
             out_channels=64,
-            kernel_size=(5, 5),
-            padding=(2, 2),
-            grid_size=5,
-            spline_order=3,
+            kernel_size=(3, 3),
+            padding=(1, 1),
+            grid_size=2,
+            spline_order=2,
             device=device,
         )
 
@@ -70,7 +70,7 @@ class Autoencoder_Encoder(nn.Module):
         residual1 = self.encoder1(x)
         residual2 = self.encoder2(residual1)
 
-        out = checkpoint(_kan_forward, out, use_reentrant=False)
+        out = _kan_forward(out)
         out = self.ECA_Net(out)
         out = self.decoder1(out) + residual2
         out = self.decoder2(out) + residual1
@@ -85,10 +85,10 @@ class Autoencoder_Decoder(nn.Module):
         self.kan = KANCL(
             in_channels=64,
             out_channels=64,
-            kernel_size=(5, 5),
-            padding=(2, 2),
-            grid_size=5,
-            spline_order=3,
+            kernel_size=(3, 3),
+            padding=(1, 1),
+            grid_size=2,
+            spline_order=2,
             device=device,
         )
 
@@ -148,10 +148,10 @@ class Autoencoder_Decoder(nn.Module):
         self.reconstruction = KANCL(
             in_channels=3,
             out_channels=3,
-            kernel_size=(3, 3),
-            padding=(1, 1),
-            grid_size=5,
-            spline_order=3,
+            kernel_size=(1, 1),
+            padding=(0, 0),
+            grid_size=2,
+            spline_order=1,
             device="cuda" if torch.cuda.is_available() else "cpu",
         )
 
@@ -168,7 +168,7 @@ class Autoencoder_Decoder(nn.Module):
         out = self.encoder2(out)
         out = self.encoder3(out)
 
-        out = checkpoint(_kan_forward, out, use_reentrant=False)
+        out = _kan_forward(out)
         out = self.ECA_Net(out)
 
         # Skip residual connections for now to focus on core architecture
@@ -179,7 +179,7 @@ class Autoencoder_Decoder(nn.Module):
         out = self.decoder2(out)  # + residual1 + residualEnc1
         out = self.decoder3(out)
         out = self.Output_Layer(out)
-        out = checkpoint(_reconstruction_forward, out, use_reentrant=False)
+        out = _reconstruction_forward(out)
 
         return out
 
@@ -220,9 +220,9 @@ class Autoencoder_Bottleneck(nn.Module):
             return self.attn2(x)
 
         x = self.encoder1(x)
-        x = checkpoint(_attn1_forward, x, use_reentrant=False)
+        x = _attn1_forward(x)
         x = self.encoder2(x)
-        z = checkpoint(_attn2_forward, x, use_reentrant=False)
+        z = _attn2_forward(x)
         x = self.decoder(z)
 
         return x, z
