@@ -54,9 +54,29 @@ class MainModel(pl.LightningModule):
 
 
 if __name__ == '__main__':
+    import argparse
     import os
     os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Train DAE-KAN model')
+    parser.add_argument('--gpu', type=int, default=0, help='GPU ID to use (default: 0)')
+    parser.add_argument('--no-cuda', action='store_true', help='Disable CUDA and use CPU')
+    args = parser.parse_args()
+
+    # Set device based on arguments
+    if args.no_cuda:
+        device = torch.device('cpu')
+        gpu_id = None
+    else:
+        if torch.cuda.is_available():
+            gpu_id = args.gpu
+            device = torch.device(f'cuda:{gpu_id}')
+            print(f"Using GPU {gpu_id}")
+        else:
+            print("CUDA not available, falling back to CPU")
+            device = torch.device('cpu')
+            gpu_id = None
 
     train_ds = ImageDataset(*create_dataset('train'), device)
     test_ds = ImageDataset(*create_dataset('test'), device)
@@ -82,8 +102,8 @@ if __name__ == '__main__':
         max_epochs=30,
         logger=wandb_logger,
         callbacks=[checkpoint_callback, lr_monitor],
-        accelerator='auto',
-        devices=1 if torch.cuda.is_available() else None,
+        accelerator='gpu' if gpu_id is not None else 'cpu',
+        devices=[gpu_id] if gpu_id is not None else 1,
         log_every_n_steps=10,
         precision='16-mixed',
         accumulate_grad_batches=3,
