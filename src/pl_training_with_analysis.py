@@ -50,7 +50,7 @@ class AnalysisEnabledMainModel(pl.LightningModule):
         self.inference_times = []
         self.memory_usage = []
 
-    def setup_analysis_tools_after_device(self):
+    def on_fit_start(self):
         """Initialize automatic analyzer after model is on correct device"""
         device = self.device
 
@@ -1131,8 +1131,6 @@ if __name__ == '__main__':
         tags=['DAE-KAN', 'histopathology', 'autoencoder', 'attention-analysis', args.model_name],
         config=args
     )
-    model.logger = wandb_logger
-    model.setup_analysis_tools_after_device()
     wandb_logger.watch(model, log='all', log_freq=10)
 
     # Setup callbacks
