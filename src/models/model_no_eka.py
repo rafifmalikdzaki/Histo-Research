@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
 from .attention_mechanisms.bam import BAM
-from .efficient_kan import KAN
+from .kan_convolutional.efficient_kan import KAN
 
 
 class NoEKAEfficientConv(nn.Module):

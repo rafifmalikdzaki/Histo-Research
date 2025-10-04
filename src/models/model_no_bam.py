@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
-from .efficient_kan import KAN
+from .kan_convolutional.efficient_kan import KAN
 from .kan_convolutional.efficient_kan_conv_fixed import KAN_Convolutional_Layer as KANCL
 
 
