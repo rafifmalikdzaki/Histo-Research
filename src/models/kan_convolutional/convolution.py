@@ -58,7 +58,7 @@ def multiple_convs_kan_conv2d(
         (kernel_side, kernel_side), dilation=dilation, padding=padding, stride=stride
     )
     conv_groups = (
-        unfold(matrix[:, :, :, :])
+        unfold(matrix)
         .view(batch_size, n_channels, kernel_side * kernel_side, h_out * w_out)
         .transpose(2, 3)
     )  # reshape((batch_size,n_channels,h_out,w_out))
@@ -75,8 +75,12 @@ def multiple_convs_kan_conv2d(
                 conv_groups[:, k_idx, :, :].flatten(0, 1)
             )  # Apply kernel with non-linear function
             out_channel_accum += conv_result.view(batch_size, h_out, w_out)
+            # Free intermediate memory
+            del conv_result
 
         matrix_out[:, c_out, :, :] = out_channel_accum  # Store results in output tensor
+        # Free intermediate memory
+        del out_channel_accum
 
     return matrix_out
 

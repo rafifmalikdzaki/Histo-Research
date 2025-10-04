@@ -1,6 +1,6 @@
 import torch
 import math
-from .KANLinear import KANLinear
+from .efficient_kan import KANLinear
 from . import convolution
 
 

@@ -8,8 +8,8 @@ class KANLinear(torch.nn.Module):
         self,
         in_features,
         out_features,
-        grid_size=5,
-        spline_order=3,
+        grid_size=3,
+        spline_order=2,
         scale_noise=0.1,
         scale_base=1.0,
         scale_spline=1.0,
@@ -161,7 +161,7 @@ class KANLinear(torch.nn.Module):
             self.scaled_spline_weight.view(self.out_features, -1),
         )
         output = base_output + spline_output
-
+        
         output = output.reshape(*original_shape[:-1], self.out_features)
         return output
 
@@ -241,8 +241,8 @@ class KAN(torch.nn.Module):
     def __init__(
         self,
         layers_hidden,
-        grid_size=5,
-        spline_order=3,
+        grid_size=3,
+        spline_order=2,
         scale_noise=0.1,
         scale_base=1.0,
         scale_spline=1.0,

@@ -25,18 +25,25 @@ class MainModel(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         x, _ = batch
+        x = x.to(self.device, non_blocking=True)  # Move to GPU in training step
         encoded, decoded, z = self.forward(x)
 
         mse_loss = nn.functional.mse_loss(x, decoded)
+
+        # Only free memory periodically, not every step
+        if batch_idx % 10 == 0:
+            torch.cuda.empty_cache()
 
         self.log("train/loss", mse_loss, on_epoch=True, prog_bar=True)
         return mse_loss
 
     def validation_step(self, batch ,batch_idx):
         x, _ = batch
+        x = x.to(self.device, non_blocking=True)  # Move to GPU in validation step
         encoded, decoded, z = self.forward(x)
 
         mse_loss = nn.functional.mse_loss(x, decoded)
+
         self.log("val/loss", mse_loss, on_epoch=True, prog_bar=True)
         return mse_loss
 
@@ -78,14 +85,17 @@ if __name__ == '__main__':
             device = torch.device('cpu')
             gpu_id = None
 
-    train_ds = ImageDataset(*create_dataset('train'), device)
-    test_ds = ImageDataset(*create_dataset('test'), device)
+    train_ds = ImageDataset(*create_dataset('train'))
+    test_ds = ImageDataset(*create_dataset('test'))
 
-    train_loader = DataLoader(train_ds, batch_size=4, shuffle=True)
-    test_loader = DataLoader(test_ds, batch_size=4, shuffle=False)
+    train_loader = DataLoader(train_ds, batch_size=4, shuffle=True, num_workers=2, persistent_workers=False, prefetch_factor=2)
+    test_loader = DataLoader(test_ds, batch_size=4, shuffle=False, num_workers=2, persistent_workers=False, prefetch_factor=2)
     x, y = next(iter(train_loader))
 
-    model = MainModel().to(device)
+    # Initialize model on CPU first to reduce memory pressure during initialization
+    model = MainModel()
+    torch.cuda.empty_cache()  # Clear cache before moving to GPU
+    model = model.to(device)
     wandb_logger = WandbLogger(project='histopath')
     wandb_logger.watch(model, log='all', log_freq=10)
 
@@ -106,7 +116,8 @@ if __name__ == '__main__':
         devices=[gpu_id] if gpu_id is not None else 1,
         log_every_n_steps=10,
         precision='16-mixed',
-        accumulate_grad_batches=3,
+        accumulate_grad_batches=4,
+        gradient_clip_val=1.0,
     )
 
     trainer.fit(model, train_loader, test_loader)

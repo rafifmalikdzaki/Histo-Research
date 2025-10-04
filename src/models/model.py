@@ -3,9 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
 from .attention_mechanisms.bam import BAM
-from .attention_mechanisms.eca import ECALayer
-from .kan_convolutional.KANLinear import KAN
-from .kan_convolutional.KANConv import KAN_Convolutional_Layer as KANCL
+from .kan_convolutional.efficient_kan import KAN
+from .kan_convolutional.efficient_kan_conv_fixed import KAN_Convolutional_Layer as KANCL
 
 
 class Autoencoder_Encoder(nn.Module):
@@ -15,9 +14,9 @@ class Autoencoder_Encoder(nn.Module):
         self.kan = KANCL(
             in_channels=64,
             out_channels=64,
-            kernel_size=(3, 3),
-            padding=(1, 1),
-            grid_size=2,
+            kernel_size=3,
+            padding=1,
+            grid_size=3,
             spline_order=2,
             device=device,
         )
@@ -39,8 +38,6 @@ class Autoencoder_Encoder(nn.Module):
             nn.BatchNorm2d(64),
             nn.ELU(True),
         )
-
-        self.ECA_Net = ECALayer(64)
 
         self.decoder1 = nn.Sequential(
             nn.BatchNorm2d(64),
@@ -71,7 +68,6 @@ class Autoencoder_Encoder(nn.Module):
         residual2 = self.encoder2(residual1)
 
         out = _kan_forward(out)
-        out = self.ECA_Net(out)
         out = self.decoder1(out) + residual2
         out = self.decoder2(out) + residual1
 
@@ -85,9 +81,9 @@ class Autoencoder_Decoder(nn.Module):
         self.kan = KANCL(
             in_channels=64,
             out_channels=64,
-            kernel_size=(3, 3),
-            padding=(1, 1),
-            grid_size=2,
+            kernel_size=3,
+            padding=1,
+            grid_size=3,
             spline_order=2,
             device=device,
         )
@@ -111,8 +107,6 @@ class Autoencoder_Decoder(nn.Module):
             nn.BatchNorm2d(64),
             nn.ELU(True),
         )
-
-        self.ECA_Net = ECALayer(64)
 
         self.decoder1 = nn.Sequential(
             nn.BatchNorm2d(64),
@@ -148,8 +142,8 @@ class Autoencoder_Decoder(nn.Module):
         self.reconstruction = KANCL(
             in_channels=3,
             out_channels=3,
-            kernel_size=(1, 1),
-            padding=(0, 0),
+            kernel_size=1,
+            padding=0,
             grid_size=2,
             spline_order=1,
             device="cuda" if torch.cuda.is_available() else "cpu",
@@ -169,7 +163,6 @@ class Autoencoder_Decoder(nn.Module):
         out = self.encoder3(out)
 
         out = _kan_forward(out)
-        out = self.ECA_Net(out)
 
         # Skip residual connections for now to focus on core architecture
         # residual1 = self.encoder2(x)

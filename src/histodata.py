@@ -49,7 +49,7 @@ class ImageDataset(torch.utils.data.Dataset):
         try:
             image = torchvision.io.read_image(img_path)
             image = image.type(torch.float32) / 255.0  # Normalize to [0, 1]
-            return image.to(self.device), self.labels[idx].to(self.device)
+            return image, self.labels[idx]
         except Exception as e:
             raise RuntimeError(f"Error loading image {img_path}: {str(e)}")
         
