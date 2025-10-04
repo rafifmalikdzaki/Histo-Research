@@ -345,7 +345,7 @@ class AutomaticAnalyzer:
         # Reconstructed image
         ax2 = fig.add_subplot(gs[0, 1])
         recon = output_np.transpose(1, 2, 0)
-        recon_norm = (recon - recon.min()) / (recon.max() - recon.min())
+        recon_norm = ((recon - recon.min()) / (recon.max() - recon.min())).astype(np.float32)
         ax2.imshow(recon_norm)
         ax2.set_title('Reconstructed Image')
         ax2.axis('off')
