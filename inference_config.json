@@ -1,0 +1,28 @@
+{
+  "enable_attention_analysis": true,
+  "enhanced_visualization": true,
+  "pathology_correlation": true,
+  "complexity_analysis": true,
+  "timing_analysis": true,
+  "save_intermediate": true,
+  "batch_analysis": true,
+  "output_format": ["png", "pdf"],
+  "dpi": 300,
+  "create_report": true,
+  "attention_config": {
+    "region_identification": true,
+    "saliency_metrics": true,
+    "spatial_analysis": true,
+    "peak_detection": true
+  },
+  "pathology_config": {
+    "correlation_analysis": true,
+    "annotation_interface": true,
+    "validation_metrics": ["iou", "dice", "precision", "recall", "f1_score"]
+  },
+  "performance_config": {
+    "memory_tracking": true,
+    "timing_precision": "high",
+    "benchmark_runs": 50
+  }
+}

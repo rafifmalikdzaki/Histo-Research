@@ -31,17 +31,14 @@ class EfficientKANConv2D(nn.Module):
         self.padding = padding
         self.dilation = dilation
 
-        # Use KANLinear for the learnable activation functions
-        # Each output channel has its own KANLinear layer
-        self.kan_layers = nn.ModuleList([
-            KANLinear(
-                in_features=in_channels * kernel_size * kernel_size,
-                out_features=1,
-                grid_size=grid_size,
-                spline_order=spline_order,
-            )
-            for _ in range(out_channels)
-        ])
+        # Optimized: Use a single KANLinear for all output channels
+        # This is much more efficient than separate layers
+        self.kan_layer = KANLinear(
+            in_features=in_channels * kernel_size * kernel_size,
+            out_features=out_channels,
+            grid_size=grid_size,
+            spline_order=spline_order,
+        )
 
     def forward(self, x):
         batch_size, _, height, width = x.shape
@@ -62,23 +59,17 @@ class EfficientKANConv2D(nn.Module):
         out_w = (width + 2 * self.padding - self.dilation * (self.kernel_size - 1) - 1) // self.stride + 1
         num_patches = out_h * out_w
 
-        # Process each output channel
-        outputs = []
-        for kan_layer in self.kan_layers:
-            # Apply KANLinear to patches for this output channel
-            # patches shape: (batch_size, in_features, num_patches)
-            # Transpose to (batch_size * num_patches, in_features) for KANLinear
-            patches_flat = patches.transpose(1, 2).contiguous().view(-1, patches.size(1))
+        # Optimized: Process all patches and output channels at once
+        # Transpose to (batch_size * num_patches, in_features) for batch processing
+        patches_flat = patches.transpose(1, 2).contiguous().view(-1, patches.size(1))
+        # Shape: (batch_size * num_patches, in_features)
 
-            # Apply KANLinear
-            out = kan_layer(patches_flat)  # (batch_size * num_patches, 1)
+        # Single KANLinear call for all output channels
+        out = self.kan_layer(patches_flat)  # (batch_size * num_patches, out_channels)
 
-            # Reshape back to (batch_size, 1, num_patches)
-            out = out.view(batch_size, num_patches, 1).transpose(1, 2)
-            outputs.append(out)
-
-        # Stack all output channels
-        output = torch.cat(outputs, dim=1)  # (batch_size, out_channels, num_patches)
+        # Reshape back to spatial dimensions
+        output = out.view(batch_size, num_patches, self.out_channels).transpose(1, 2)
+        # Shape: (batch_size, out_channels, num_patches)
 
         # Reshape to final output shape
         output = output.view(batch_size, self.out_channels, out_h, out_w)

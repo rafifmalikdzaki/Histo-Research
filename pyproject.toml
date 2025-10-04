@@ -21,6 +21,7 @@ dependencies = [
     "pandas>=2.3.2",
     "patchify>=0.2.3",
     "pillow>=11.0.0",
+    "plotly>=6.3.1",
     "polars>=1.33.1",
     "ptflops>=0.7.5",
     "pytorch-lightning>=2.5.5",
@@ -34,6 +35,7 @@ dependencies = [
     "torchinfo>=1.8.0",
     "torchvision>=0.23.0",
     "tqdm>=4.67.1",
+    "umap-learn>=0.5.9.post2",
     "voila>=0.5.11",
     "wandb>=0.22.1",
 ]
