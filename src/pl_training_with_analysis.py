@@ -6,7 +6,7 @@ from pytorch_lightning.callbacks import (
     ModelCheckpoint,
     LearningRateMonitor,
 )
-from models.model import DAE_KAN_Attention
+from models.factory import get_model
 from histodata import *
 from torch.utils.data import Dataset, DataLoader
 import wandb
@@ -32,9 +32,9 @@ class AnalysisEnabledMainModel(pl.LightningModule):
     Lightning module with automatic analysis integration
     """
 
-    def __init__(self, batch_size=8, analysis_frequency=100):
+    def __init__(self, model_name: str = "dae_kan_attention", batch_size=8, analysis_frequency=100):
         super(AnalysisEnabledMainModel, self).__init__()
-        self.model = DAE_KAN_Attention()
+        self.model = get_model(model_name)()
         self.batch_size = batch_size
         self.analysis_frequency = analysis_frequency  # Run full analysis every N batches
 
@@ -1057,6 +1057,7 @@ if __name__ == '__main__':
     parser.add_argument('--num-workers', type=int, default=4, help='Number of data loader workers')
     parser.add_argument('--analysis-freq', type=int, default=100, help='Run analysis every N batches')
     parser.add_argument('--project-name', type=str, default='histopath-kan-analysis', help='W&B project name')
+    parser.add_argument('--model-name', type=str, default="dae_kan_attention", help='Name of the model to use')
     args = parser.parse_args()
 
     # Set device
@@ -1083,7 +1084,7 @@ if __name__ == '__main__':
 
     # Determine optimal batch size
     if args.batch_size is None:
-        temp_model = DAE_KAN_Attention()
+        temp_model = get_model(args.model_name)()
         temp_model = temp_model.to(device)
         batch_size = get_optimal_batch_size(temp_model, device)
         del temp_model
@@ -1120,7 +1121,7 @@ if __name__ == '__main__':
     print(f"Data loading successful. Batch shape: {x.shape}")
 
     # Initialize model with analysis
-    model = AnalysisEnabledMainModel(batch_size=batch_size, analysis_frequency=args.analysis_freq)
+    model = AnalysisEnabledMainModel(model_name=args.model_name, batch_size=batch_size, analysis_frequency=args.analysis_freq)
     model = model.to(device)
     # Initialize analysis tools after model is on correct device
     model.setup_analysis_tools_after_device()
@@ -1128,27 +1129,9 @@ if __name__ == '__main__':
     # Setup W&B logging with comprehensive configuration
     wandb_logger = WandbLogger(
         project=args.project_name,
-        config={
-            'batch_size': batch_size,
-            'device': str(device),
-            'num_workers': num_workers,
-            'model': 'DAE_KAN_Attention_with_Analysis',
-            'analysis_frequency': args.analysis_freq,
-            'optimizations': [
-                'efficient_kan_convolution',
-                'memory_optimization',
-                'cuda_optimization',
-                'gradcam_analysis',
-                'attention_visualization',
-                'pathology_correlation'
-            ],
-            'model_params': {
-                'parameters': '5.2M',
-                'grid_size': '3',
-                'spline_order': '2'
-            }
-        },
-        tags=['DAE-KAN', 'histopathology', 'autoencoder', 'attention-analysis']
+        group=args.model_name,
+        tags=['DAE-KAN', 'histopathology', 'autoencoder', 'attention-analysis', args.model_name],
+        config=args
     )
     wandb_logger.watch(model, log='all', log_freq=10)
 

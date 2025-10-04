@@ -27,13 +27,11 @@ warnings.filterwarnings('ignore')
 from analysis.auto_analysis import AutomaticAnalyzer
 
 
-class AnalysisEnabledMainModel(pl.LightningModule):
-    """
-    Lightning module with automatic analysis integration
-    """
+class OptimizedMainModelWithAnalysis(pl.LightningModule):
+    """Optimized Lightning module with better memory management and GPU utilization"""
 
     def __init__(self, model_name: str = "dae_kan_attention", batch_size=8, analysis_frequency=100):
-        super(AnalysisEnabledMainModel, self).__init__()
+        super(OptimizedMainModelWithAnalysis, self).__init__()
         self.model = get_model(model_name)()
         self.batch_size = batch_size
         self.analysis_frequency = analysis_frequency  # Run full analysis every N batches
@@ -54,8 +52,8 @@ class AnalysisEnabledMainModel(pl.LightningModule):
         """Initialize automatic analyzer after model is on correct device"""
         device = self.device
 
-        # Create analysis directory (will be updated after logger is set)
-        analysis_dir = "auto_analysis"
+        # Create analysis directory
+        analysis_dir = f"auto_analysis_{self.logger.experiment.name}" if hasattr(self, 'logger') else "auto_analysis"
 
         # Initialize automatic analyzer
         self.auto_analyzer = AutomaticAnalyzer(
@@ -65,39 +63,6 @@ class AnalysisEnabledMainModel(pl.LightningModule):
         )
 
         print(f"Automatic analyzer initialized. Saving to: {analysis_dir}")
-
-    def setup_analysis_dir_after_logger(self):
-        """Update analysis directory after logger is initialized"""
-        if hasattr(self, 'logger') and self.logger is not None and hasattr(self.logger, 'experiment'):
-            run_name = self.logger.experiment.name
-            analysis_dir = f"auto_analysis/{run_name}"
-            os.makedirs(analysis_dir, exist_ok=True)
-
-            # Move any existing files from auto_analysis to run-specific directory
-            import shutil
-            temp_dir = "auto_analysis_temp"
-            if os.path.exists("auto_analysis") and not os.path.exists(analysis_dir):
-                if os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir)
-                # Rename auto_analysis to temp
-                os.rename("auto_analysis", temp_dir)
-                # Create new auto_analysis directory
-                os.makedirs("auto_analysis", exist_ok=True)
-                # Move contents to run-specific directory
-                if os.path.exists(temp_dir):
-                    for item in os.listdir(temp_dir):
-                        shutil.move(os.path.join(temp_dir, item), analysis_dir)
-                    # Remove temp directory
-                    shutil.rmtree(temp_dir)
-
-            # Update the analyzer save directory
-            self.auto_analyzer.save_dir = analysis_dir
-            print(f"Updated analysis directory to: {analysis_dir}")
-
-            # Create paper-ready directory structure
-            paper_dir = os.path.join(analysis_dir, "paper_figures")
-            os.makedirs(paper_dir, exist_ok=True)
-            print(f"Paper figures directory: {paper_dir}")
 
     def forward(self, x):
         encoded, decoded, z = self.model(x)
@@ -136,7 +101,7 @@ class AnalysisEnabledMainModel(pl.LightningModule):
 
         self.reconstruction_metrics.append({
             'mse': mse_loss.item(),
-            'ssim': ssim_score if isinstance(ssim_score, float) else ssim_score.item(),
+            'ssim': ssim_score.item(),
             'error_std': reconstruction_error.std().item(),
             'error_mean': reconstruction_error.mean().item()
         })
@@ -182,37 +147,28 @@ class AnalysisEnabledMainModel(pl.LightningModule):
 
                 # Create visualization every N batches
                 if batch_idx % self.analysis_frequency == 0 and batch_idx > 0:
-                    # Create comprehensive paper-ready dashboard
-                    dashboard_result = self.auto_analyzer.create_comprehensive_paper_dashboard(
+                    viz_path = self.auto_analyzer.create_batch_visualization(
                         batch_idx=batch_idx,
                         input_tensor=x,
                         output_tensor=decoded,
                         phase="train"
                     )
 
-                    # Log individual paper figures to W&B
+                    # Log visualization to W&B
                     if hasattr(self, 'logger') and self.logger is not None:
-                        for fig_name, fig_path in dashboard_result['individual_figures'].items():
-                            self.logger.experiment.log({
-                                f'train/{fig_name}_{batch_idx}': wandb.Image(fig_path)
-                            })
+                        self.logger.experiment.log({
+                            f'train/batch_visualization_{batch_idx}': wandb.Image(viz_path)
+                        })
 
                     # Save metrics
                     self.auto_analyzer.save_metrics()
 
-                    print(f"✓ Individual figures analysis completed for batch {batch_idx}")
-                    print(f"  📄 Individual figures: {len(dashboard_result['individual_figures'])} generated")
-                    for fig_name, fig_path in dashboard_result['individual_figures'].items():
-                        print(f"    - {fig_name}: {fig_path}")
+                    print(f"✓ Analysis completed for batch {batch_idx}")
 
             except Exception as e:
                 print(f"⚠ Analysis failed for batch {batch_idx}: {e}")
                 # Don't crash training if analysis fails
                 pass
-
-        # Log basic training metrics
-        if batch_idx % 50 == 0:
-            print(f"Batch {batch_idx}: Loss={mse_loss.item():.4f}, SSIM={ssim_score:.4f}")
 
         return mse_loss
 
@@ -273,38 +229,30 @@ class AnalysisEnabledMainModel(pl.LightningModule):
                     if 'attention_' in metric_name and isinstance(value, (int, float)):
                         self.log(f"val/{metric_name}", value, on_step=True, on_epoch=False, sync_dist=False)
 
-                # Create comprehensive visualization for validation
-                dashboard_result = self.auto_analyzer.create_comprehensive_paper_dashboard(
+                # Create visualization for validation
+                viz_path = self.auto_analyzer.create_batch_visualization(
                     batch_idx=batch_idx,
                     input_tensor=x,
                     output_tensor=decoded,
                     phase="val"
                 )
 
-                # Log individual paper figures to W&B for validation
+                # Log visualization to W&B
                 if hasattr(self, 'logger') and self.logger is not None:
-                    for fig_name, fig_path in dashboard_result['individual_figures'].items():
-                        self.logger.experiment.log({
-                            f'val/{fig_name}_{batch_idx}': wandb.Image(fig_path)
-                        })
+                    self.logger.experiment.log({
+                        f'val/batch_visualization_{batch_idx}': wandb.Image(viz_path)
+                    })
 
-                print(f"✓ Validation individual figures analysis completed for batch {batch_idx}")
-                print(f"  📄 Individual figures: {len(dashboard_result['individual_figures'])} generated")
-                for fig_name, fig_path in dashboard_result['individual_figures'].items():
-                    print(f"    - {fig_name}: {fig_path}")
+                print(f"✓ Validation analysis completed for batch {batch_idx}")
 
             except Exception as e:
                 print(f"⚠ Validation analysis failed for batch {batch_idx}: {e}")
                 # Don't crash validation if analysis fails
                 pass
 
-        # Log basic validation metrics
-        if batch_idx == 0:
-            print(f"Validation: Loss={mse_loss.item():.4f}, SSIM={ssim_score:.4f}")
-
         return mse_loss
 
-    def calculate_ssim(self, img1: torch.Tensor, img2: torch.Tensor) -> float:
+    def calculate_ssim(self, img1, img2):
         """Calculate SSIM between two images"""
         # Simple SSIM calculation
         mu1 = torch.mean(img1, dim=[1, 2, 3])
@@ -322,16 +270,18 @@ class AnalysisEnabledMainModel(pl.LightningModule):
         ssim_num = ((2 * mu1 * mu2 + C1) * (2 * sigma12 + C2))
         ssim_den = ((mu1**2 + mu2**2 + C1) * (sigma1_sq + sigma2_sq + C2))
 
-        ssim = ssim_num / (ssim_den + 1e-8)
-        return float(torch.mean(ssim))
+        ssim = ssim_num / ssim_den
+        return torch.mean(ssim)
 
     def configure_optimizers(self):
+        # Use Adam with faster convergence
         optimizer = torch.optim.Adam(
             self.parameters(),
-            lr=0.002,
+            lr=0.002,  # Higher learning rate for faster training
             weight_decay=1e-5,
         )
 
+        # Simple step scheduler for faster training
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode='min', factor=0.7, patience=2, min_lr=1e-5
         )
@@ -345,29 +295,14 @@ class AnalysisEnabledMainModel(pl.LightningModule):
         }
 
     def on_train_epoch_start(self):
+        """Enable optimization at the start of each epoch"""
+        # Enable mixed precision training
         torch.set_float32_matmul_precision('high')
 
-    def on_train_epoch_end(self):
-        # Save final metrics for the epoch
-        if self.auto_analyzer:
-            try:
-                # Save metrics after each epoch
-                save_path = self.auto_analyzer.save_metrics(f"epoch_{self.current_epoch}_metrics.json")
-
-                # Log summary to W&B
-                summary = self.auto_analyzer.get_batch_summary()
-                if summary and hasattr(self, 'logger') and self.logger is not None:
-                    for key, value in summary.items():
-                        if isinstance(value, (int, float)):
-                            self.log(f"epoch/{key}", value, on_epoch=True, sync_dist=False)
-
-                print(f"✓ Epoch {self.current_epoch} metrics saved")
-
-            except Exception as e:
-                print(f"⚠ Failed to save epoch metrics: {e}")
-
     def on_train_batch_end(self, outputs, batch, batch_idx):
-        if batch_idx % 100 == 0:
+        """Optimize memory after each batch"""
+        # Periodic memory cleanup (less frequent than before)
+        if batch_idx % 50 == 0:
             torch.cuda.empty_cache()
 
     def on_train_end(self):
@@ -448,26 +383,34 @@ class AnalysisEnabledMainModel(pl.LightningModule):
 
 
 def get_optimal_batch_size(model, device, input_size=(3, 128, 128)):
-    """Dynamically determine optimal batch size based on available GPU memory"""
+    """
+    Dynamically determine optimal batch size based on available GPU memory
+    """
     model.eval()
     torch.cuda.empty_cache()
 
+    # Get available GPU memory
     if torch.cuda.is_available():
         gpu_memory = torch.cuda.get_device_properties(device).total_memory
         reserved_memory = torch.cuda.memory_reserved(device)
         allocated_memory = torch.cuda.memory_allocated(device)
         available_memory = gpu_memory - reserved_memory - allocated_memory
 
-        sample_size = torch.prod(torch.tensor(input_size)).item() * 4
+        # Estimate memory per sample (rough heuristic)
+        sample_size = torch.prod(torch.tensor(input_size)).item() * 4  # 4 bytes per float32
+
+        # Start with batch size and increase until memory is full
         batch_size = 4
-        max_batch_size = 32
+        max_batch_size = 32  # Upper limit
 
         while batch_size <= max_batch_size:
             try:
+                # Test with current batch size
                 test_input = torch.randn(batch_size, *input_size).to(device)
                 with torch.no_grad():
                     _ = model(test_input)
 
+                # If successful, try larger batch
                 del test_input
                 batch_size *= 2
 
@@ -478,9 +421,10 @@ def get_optimal_batch_size(model, device, input_size=(3, 128, 128)):
                 else:
                     raise e
 
+        # Return the largest successful batch size divided by 2 for safety
         return max(4, batch_size // 2)
     else:
-        return 4
+        return 4  # Default for CPU
 
 
 if __name__ == '__main__':
@@ -489,16 +433,16 @@ if __name__ == '__main__':
 
     # Optimized CUDA settings
     os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True,max_split_size_mb:128'
-    os.environ['CUDA_LAUNCH_BLOCKING'] = '0'
+    os.environ['CUDA_LAUNCH_BLOCKING'] = '0'  # Enable async CUDA operations
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Train DAE-KAN with automatic analysis')
+    parser = argparse.ArgumentParser(description='Train optimized DAE-KAN model with analysis')
     parser.add_argument('--gpu', type=int, default=0, help='GPU ID to use (default: 0)')
     parser.add_argument('--no-cuda', action='store_true', help='Disable CUDA and use CPU')
     parser.add_argument('--batch-size', type=int, default=None, help='Batch size (auto-detected if not specified)')
     parser.add_argument('--num-workers', type=int, default=4, help='Number of data loader workers')
-    parser.add_argument('--analysis-freq', type=int, default=100, help='Run full analysis every N batches')
-    parser.add_argument('--project-name', type=str, default='histopath-kan-auto', help='W&B project name')
+    parser.add_argument('--analysis-freq', type=int, default=100, help='Run analysis every N batches')
+    parser.add_argument('--project-name', type=str, default='histopath-kan-optimized-analysis', help='W&B project name')
     parser.add_argument('--model-name', type=str, default="dae_kan_attention", help='Name of the model to use')
     args = parser.parse_args()
 
@@ -513,6 +457,7 @@ if __name__ == '__main__':
             device = torch.device(f'cuda:{gpu_id}')
             print(f"Using GPU {gpu_id}")
             num_workers = args.num_workers
+            # Enable cuDNN benchmark for consistent input sizes
             torch.backends.cudnn.benchmark = True
         else:
             print("CUDA not available, falling back to CPU")
@@ -535,7 +480,7 @@ if __name__ == '__main__':
     else:
         batch_size = args.batch_size
 
-    # Create data loaders
+    # Create optimized data loaders
     train_loader = DataLoader(
         train_ds,
         batch_size=batch_size,
@@ -544,7 +489,7 @@ if __name__ == '__main__':
         persistent_workers=num_workers > 0,
         prefetch_factor=2 if num_workers > 0 else 2,
         pin_memory=torch.cuda.is_available(),
-        drop_last=True
+        drop_last=True  # For consistent batch sizes
     )
 
     test_loader = DataLoader(
@@ -562,36 +507,33 @@ if __name__ == '__main__':
     x, y = next(iter(train_loader))
     print(f"Data loading successful. Batch shape: {x.shape}")
 
-    # Initialize model with automatic analysis
-    model = AnalysisEnabledMainModel(model_name=args.model_name, batch_size=batch_size, analysis_frequency=args.analysis_freq)
+    # Initialize optimized model
+    model = OptimizedMainModelWithAnalysis(model_name=args.model_name, batch_size=batch_size, analysis_frequency=args.analysis_freq)
     model = model.to(device)
-    # Initialize analysis tools after model is on correct device
     model.setup_analysis_tools_after_device()
 
-    # Setup W&B logging with comprehensive configuration
+    # Setup logging
     wandb_logger = WandbLogger(
         project=args.project_name,
         group=args.model_name,
-        tags=['DAE-KAN', 'histopathology', 'autoencoder', 'automatic-analysis', args.model_name],
+        tags=['optimized', 'analysis', args.model_name],
         config=args
     )
     wandb_logger.watch(model, log='all', log_freq=10)
-
-    # Update analysis directory after logger is initialized
-    model.setup_analysis_dir_after_logger()
 
     # Setup callbacks
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
     checkpoint_callback = ModelCheckpoint(
         monitor='val/loss',
-        dirpath='./checkpoints_auto_analysis',
+        dirpath='./checkpoints_optimized_with_analysis',
         filename='best-checkpoint-{epoch:02d}-{val_loss:.3f}',
         save_top_k=3,
         mode='min',
         save_last=True
     )
 
-    # Create trainer
+    
+    # Create optimized trainer
     trainer = pl.Trainer(
         max_epochs=30,
         logger=wandb_logger,
@@ -599,26 +541,22 @@ if __name__ == '__main__':
         accelerator='gpu' if gpu_id is not None else 'cpu',
         devices=[gpu_id] if gpu_id is not None else 1,
         log_every_n_steps=20,
-        precision='32-true',  # Use 32-bit precision to avoid mixed precision issues
+        precision='16-mixed',  # Mixed precision training
         accumulate_grad_batches=1,
         gradient_clip_val=1.0,
+        # Optimized training settings
         deterministic=False,
         benchmark=True,
         limit_train_batches=1.0,
         limit_val_batches=1.0,
+        # Faster logging
         enable_checkpointing=True,
         enable_progress_bar=True,
     )
 
     # Start training
-    print(f"Starting training with automatic analysis")
-    print(f"Batch size: {batch_size}, Analysis frequency: every {args.analysis_freq} batches")
-    print(f"W&B project: {args.project_name}")
-
+    print(f"Starting training with batch size {batch_size} on {device}")
     trainer.fit(model, train_loader, test_loader)
-
-    # Final cleanup
-    print("Training completed. Automatic analysis results are saved in the analysis directory.")
 
     # Cleanup
     wandb.finish()

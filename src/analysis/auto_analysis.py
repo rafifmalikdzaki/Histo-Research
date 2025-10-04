@@ -471,7 +471,7 @@ class AutomaticAnalyzer:
         plt.suptitle(f'DAE-KAN Analysis - {phase.upper()} Batch {batch_idx}', fontsize=16, fontweight='bold')
 
         # Save visualization
-        save_path = os.path.join(self.save_dir, f'{phase}_batch_{batch_idx:06d}.png')
+        save_path = os.path.join(self.save_dir, f'live_batch_visualization_{phase}.png')
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
         plt.close()
 
@@ -893,7 +893,7 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
             os.makedirs(components_dir, exist_ok=True)
             
             # Create subdirectory for this batch
-            batch_dir = os.path.join(components_dir, f'{phase}_batch_{batch_idx:06d}')
+            batch_dir = os.path.join(components_dir, f'latest_{phase}_components')
             os.makedirs(batch_dir, exist_ok=True)
             
             # Get data

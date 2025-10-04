@@ -6,7 +6,7 @@ from pytorch_lightning.callbacks import (
     ModelCheckpoint,
     LearningRateMonitor,
 )
-from models.model import DAE_KAN_Attention
+from models.factory import get_model
 from histodata import *
 from torch.utils.data import Dataset, DataLoader
 import wandb
@@ -16,9 +16,9 @@ import gc
 class OptimizedMainModel(pl.LightningModule):
     """Optimized Lightning module with better memory management and GPU utilization"""
 
-    def __init__(self, batch_size=8):
+    def __init__(self, model_name: str = "dae_kan_attention", batch_size=8):
         super(OptimizedMainModel, self).__init__()
-        self.model = DAE_KAN_Attention()
+        self.model = get_model(model_name)()
         self.batch_size = batch_size
 
     def forward(self, x):
@@ -141,6 +141,7 @@ if __name__ == '__main__':
     parser.add_argument('--no-cuda', action='store_true', help='Disable CUDA and use CPU')
     parser.add_argument('--batch-size', type=int, default=None, help='Batch size (auto-detected if not specified)')
     parser.add_argument('--num-workers', type=int, default=4, help='Number of data loader workers')
+    parser.add_argument('--model-name', type=str, default="dae_kan_attention", help='Name of the model to use')
     args = parser.parse_args()
 
     # Set device
@@ -168,7 +169,7 @@ if __name__ == '__main__':
 
     # Determine optimal batch size
     if args.batch_size is None:
-        temp_model = DAE_KAN_Attention()
+        temp_model = get_model(args.model_name)()
         temp_model = temp_model.to(device)
         batch_size = get_optimal_batch_size(temp_model, device)
         del temp_model
@@ -205,18 +206,15 @@ if __name__ == '__main__':
     print(f"Data loading successful. Batch shape: {x.shape}")
 
     # Initialize optimized model
-    model = OptimizedMainModel(batch_size=batch_size)
+    model = OptimizedMainModel(model_name=args.model_name, batch_size=batch_size)
     model = model.to(device)
 
     # Setup logging
     wandb_logger = WandbLogger(
-        project='histopath-optimized',
-        config={
-            'batch_size': batch_size,
-            'device': str(device),
-            'num_workers': num_workers,
-            'model': 'DAE_KAN_Attention_Optimized'
-        }
+        project='histopath-ablation',
+        group=args.model_name,
+        tags=['optimized', args.model_name],
+        config=args
     )
     wandb_logger.watch(model, log='all', log_freq=10)
 
