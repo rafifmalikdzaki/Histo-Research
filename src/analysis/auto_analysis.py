@@ -478,7 +478,7 @@ class AutomaticAnalyzer:
         # Original image
         ax1 = fig.add_subplot(gs[0, 0])
         img = input_np.transpose(1, 2, 0)
-        img_norm = (img - img.min()) / (img.max() - img.min())
+        img_norm = ((img - img.min()) / (img.max() - img.min())).astype(np.float32)
         ax1.imshow(img_norm)
         ax1.set_title('Original Image')
         ax1.axis('off')
@@ -493,7 +493,7 @@ class AutomaticAnalyzer:
 
         # Error map
         ax3 = fig.add_subplot(gs[0, 2])
-        error_map = np.mean((img_norm - recon_norm) ** 2, axis=2)
+        error_map = np.mean((img_norm.astype(np.float32) - recon_norm.astype(np.float32)) ** 2, axis=2).astype(np.float32)
         im = ax3.imshow(error_map, cmap='hot')
         ax3.set_title('Reconstruction Error')
         ax3.axis('off')
@@ -645,9 +645,9 @@ class AutomaticAnalyzer:
             input_np = input_tensor[0].detach().cpu().numpy()
             output_np = output_tensor[0].detach().cpu().numpy()
             img = input_np.transpose(1, 2, 0)
-            img_norm = (img - img.min()) / (img.max() - img.min())
+            img_norm = ((img - img.min()) / (img.max() - img.min())).astype(np.float32)
             recon = output_np.transpose(1, 2, 0)
-            recon_norm = (recon - recon.min()) / (recon.max() - recon.min())
+            recon_norm = ((recon - recon.min()) / (recon.max() - recon.min())).astype(np.float32)
 
             # === TOP ROW: Images and Reconstruction ===
 
@@ -665,7 +665,7 @@ class AutomaticAnalyzer:
 
             # Error map
             ax_error = fig.add_subplot(gs[0, 2])
-            error_map = np.mean((img_norm - recon_norm) ** 2, axis=2)
+            error_map = np.mean((img_norm.astype(np.float32) - recon_norm.astype(np.float32)) ** 2, axis=2).astype(np.float32)
             im_error = ax_error.imshow(error_map, cmap='hot')
             ax_error.set_title('Reconstruction Error', fontsize=12, fontweight='bold')
             ax_error.axis('off')
@@ -1065,9 +1065,9 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
             input_np = input_tensor[0].detach().cpu().numpy()
             output_np = output_tensor[0].detach().cpu().numpy()
             img = input_np.transpose(1, 2, 0)
-            img_norm = (img - img.min()) / (img.max() - img.min())
+            img_norm = ((img - img.min()) / (img.max() - img.min())).astype(np.float32)
             recon = output_np.transpose(1, 2, 0)
-            recon_norm = (recon - recon.min()) / (recon.max() - recon.min())
+            recon_norm = ((recon - recon.min()) / (recon.max() - recon.min())).astype(np.float32)
             
             saved_files = {}
             
@@ -1096,7 +1096,7 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
             # 3. Error Map
             fig_error = plt.figure(figsize=(8, 8))
             ax_error = fig_error.add_subplot(111)
-            error_map = np.mean((img_norm - recon_norm) ** 2, axis=2)
+            error_map = np.mean((img_norm.astype(np.float32) - recon_norm.astype(np.float32)) ** 2, axis=2).astype(np.float32)
             im_error = ax_error.imshow(error_map, cmap='hot')
             ax_error.set_title('Reconstruction Error Map', fontsize=14, fontweight='bold')
             ax_error.axis('off')

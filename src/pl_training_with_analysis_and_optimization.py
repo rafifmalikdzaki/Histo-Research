@@ -541,7 +541,7 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
             for file_path in train_epoch_files:
                 epoch_num = int(os.path.basename(file_path).split('_')[-1].split('.')[0])
                 embeddings = np.load(file_path)
-                metadata = pd.read_csv(file_path.replace('.npy', '_metadata.csv'))
+                metadata = pd.read_csv(file_path.replace('_embeddings_epoch_', '_metadata_epoch_').replace('.npy', '.csv'))
                 train_embeddings_by_epoch.append({
                     'epoch': epoch_num,
                     'embeddings': embeddings,
@@ -552,7 +552,7 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
             for file_path in val_epoch_files:
                 epoch_num = int(os.path.basename(file_path).split('_')[-1].split('.')[0])
                 embeddings = np.load(file_path)
-                metadata = pd.read_csv(file_path.replace('.npy', '_metadata.csv'))
+                metadata = pd.read_csv(file_path.replace('_embeddings_epoch_', '_metadata_epoch_').replace('.npy', '.csv'))
                 val_embeddings_by_epoch.append({
                     'epoch': epoch_num,
                     'embeddings': embeddings,
@@ -816,7 +816,7 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                 <div class="epoch-item">
                     <span>Epoch {epoch['epoch']}</span>
                     <a href="{os.path.basename(epoch['file_path'])}" class="file-link" download>Embeddings</a>
-                    <a href="{os.path.basename(epoch['file_path']).replace('.npy', '_metadata.csv')}" class="file-link" download>Metadata</a>
+                    <a href="{os.path.basename(epoch['file_path']).replace('_embeddings_epoch_', '_metadata_epoch_').replace('.npy', '.csv')}" class="file-link" download>Metadata</a>
                 </div>''' for epoch in train_epochs])}
             </div>
         </div>
@@ -828,7 +828,7 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                 <div class="epoch-item">
                     <span>Epoch {epoch['epoch']}</span>
                     <a href="{os.path.basename(epoch['file_path'])}" class="file-link" download>Embeddings</a>
-                    <a href="{os.path.basename(epoch['file_path']).replace('.npy', '_metadata.csv')}" class="file-link" download>Metadata</a>
+                    <a href="{os.path.basename(epoch['file_path']).replace('_embeddings_epoch_', '_metadata_epoch_').replace('.npy', '.csv')}" class="file-link" download>Metadata</a>
                 </div>''' for epoch in val_epochs]) if val_epochs else '<p>No validation epoch files available</p>'}
             </div>
         </div>
@@ -1153,6 +1153,243 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
             f.write(report_text)
 
         print(f"✓ Final summary report saved: {report_path}")
+
+    def _create_dimensionality_reduction_plots(self, embeddings: np.ndarray, metadata: pd.DataFrame,
+                                             phase: str, embeddings_dir: str):
+        """Create UMAP/t-SNE visualizations"""
+        try:
+            import matplotlib.pyplot as plt
+            from sklearn.preprocessing import StandardScaler
+
+            # Sample if too many embeddings
+            max_samples = 2000
+            if len(embeddings) > max_samples:
+                indices = np.random.choice(len(embeddings), max_samples, replace=False)
+                embeddings_sample = embeddings[indices]
+                metadata_sample = metadata.iloc[indices].reset_index(drop=True)
+            else:
+                embeddings_sample = embeddings
+                metadata_sample = metadata.reset_index(drop=True)
+
+            # Standardize
+            scaler = StandardScaler()
+            embeddings_scaled = scaler.fit_transform(embeddings_sample)
+
+            # Create visualization
+            fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+            fig.suptitle(f'{phase.capitalize()} Embedding Dimensionality Reduction', fontsize=16, fontweight='bold')
+
+            # Try UMAP first
+            try:
+                import umap
+                reducer = umap.UMAP(n_neighbors=15, min_dist=0.1, random_state=42)
+                embedding_2d = reducer.fit_transform(embeddings_scaled)
+
+                axes[0].scatter(embedding_2d[:, 0], embedding_2d[:, 1], alpha=0.6, s=30)
+                axes[0].set_title('UMAP Projection')
+                axes[0].set_xlabel('UMAP 1')
+                axes[0].set_ylabel('UMAP 2')
+                axes[0].grid(True, alpha=0.3)
+
+            except ImportError:
+                axes[0].text(0.5, 0.5, 'UMAP not available\n(pip install umap-learn)',
+                           ha='center', va='center', transform=axes[0].transAxes)
+                axes[0].set_title('UMAP Projection')
+
+            # t-SNE
+            from sklearn.manifold import TSNE
+            tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(embeddings_sample)-1))
+            embedding_2d = tsne.fit_transform(embeddings_scaled)
+
+            axes[1].scatter(embedding_2d[:, 0], embedding_2d[:, 1], alpha=0.6, s=30)
+            axes[1].set_title('t-SNE Projection')
+            axes[1].set_xlabel('t-SNE 1')
+            axes[1].set_ylabel('t-SNE 2')
+            axes[1].grid(True, alpha=0.3)
+
+            plt.tight_layout()
+            viz_path = os.path.join(embeddings_dir, f'{phase}_dimensionality_reduction.png')
+            plt.savefig(viz_path, dpi=300, bbox_inches='tight', facecolor='white')
+            plt.close()
+
+        except Exception as e:
+            print(f"⚠ Failed to create dimensionality reduction plots: {e}")
+
+    def _create_clustering_analysis(self, embeddings: np.ndarray, metadata: pd.DataFrame,
+                                  phase: str, embeddings_dir: str):
+        """Create clustering analysis"""
+        try:
+            import matplotlib.pyplot as plt
+            from sklearn.cluster import KMeans
+            from sklearn.metrics import silhouette_score
+
+            # Sample if too many embeddings
+            max_samples = 2000
+            if len(embeddings) > max_samples:
+                indices = np.random.choice(len(embeddings), max_samples, replace=False)
+                embeddings_sample = embeddings[indices]
+            else:
+                embeddings_sample = embeddings
+
+            # K-means clustering
+            n_clusters = min(8, len(embeddings_sample) // 10)
+            if n_clusters < 2:
+                return
+
+            kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+            cluster_labels = kmeans.fit_predict(embeddings_sample)
+
+            # Calculate silhouette score
+            sil_score = silhouette_score(embeddings_sample, cluster_labels)
+
+            # Create visualization
+            fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+            fig.suptitle(f'{phase.capitalize()} Embedding Clustering Analysis', fontsize=16, fontweight='bold')
+
+            # Cluster distribution
+            axes[0, 0].hist(cluster_labels, bins=n_clusters, alpha=0.7, edgecolor='black')
+            axes[0, 0].set_title(f'Cluster Distribution (k={n_clusters})')
+            axes[0, 0].set_xlabel('Cluster ID')
+            axes[0, 0].set_ylabel('Count')
+            axes[0, 0].grid(True, alpha=0.3)
+
+            # Silhouette score
+            axes[0, 1].bar(['Silhouette Score'], [sil_score], alpha=0.7, color='coral')
+            axes[0, 1].set_title('Clustering Quality')
+            axes[0, 1].set_ylabel('Score')
+            axes[0, 1].set_ylim(0, 1)
+            axes[0, 1].grid(True, alpha=0.3)
+
+            # Cluster centers (first 2 dimensions for visualization)
+            if embeddings_sample.shape[1] >= 2:
+                centers_2d = kmeans.cluster_centers_[:, :2]
+                axes[1, 0].scatter(embeddings_sample[:, 0], embeddings_sample[:, 1],
+                                 c=cluster_labels, alpha=0.6, s=30, cmap='tab10')
+                axes[1, 0].scatter(centers_2d[:, 0], centers_2d[:, 1],
+                                 c='red', marker='x', s=200, linewidths=3)
+                axes[1, 0].set_title('Cluster Centers (First 2 Dimensions)')
+                axes[1, 0].set_xlabel('Dimension 1')
+                axes[1, 0].set_ylabel('Dimension 2')
+                axes[1, 0].grid(True, alpha=0.3)
+            else:
+                axes[1, 0].text(0.5, 0.5, 'Embeddings have < 2 dimensions',
+                               ha='center', va='center', transform=axes[1, 0].transAxes)
+
+            # Cluster sizes pie chart
+            unique_labels, counts = np.unique(cluster_labels, return_counts=True)
+            axes[1, 1].pie(counts, labels=[f'Cluster {i}' for i in unique_labels], autopct='%1.1f%%')
+            axes[1, 1].set_title('Cluster Size Distribution')
+
+            plt.tight_layout()
+            viz_path = os.path.join(embeddings_dir, f'{phase}_clustering_analysis.png')
+            plt.savefig(viz_path, dpi=300, bbox_inches='tight', facecolor='white')
+            plt.close()
+
+        except Exception as e:
+            print(f"⚠ Failed to create clustering analysis: {e}")
+
+    def _create_embedding_quality_analysis(self, embeddings: np.ndarray, metadata: pd.DataFrame,
+                                         phase: str, embeddings_dir: str):
+        """Create embedding quality metrics analysis"""
+        try:
+            import matplotlib.pyplot as plt
+
+            fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+            fig.suptitle(f'{phase.capitalize()} Embedding Quality Analysis', fontsize=16, fontweight='bold')
+
+            # Embedding norms
+            norms = np.linalg.norm(embeddings, axis=1)
+            axes[0, 0].hist(norms, bins=50, alpha=0.7, edgecolor='black')
+            axes[0, 0].set_title('Distribution of Embedding Norms')
+            axes[0, 0].set_xlabel('L2 Norm')
+            axes[0, 0].set_ylabel('Frequency')
+            axes[0, 0].grid(True, alpha=0.3)
+
+            # Embedding means
+            means = np.mean(embeddings, axis=1)
+            axes[0, 1].hist(means, bins=50, alpha=0.7, edgecolor='black', color='coral')
+            axes[0, 1].set_title('Distribution of Embedding Means')
+            axes[0, 1].set_xlabel('Mean Value')
+            axes[0, 1].set_ylabel('Frequency')
+            axes[0, 1].grid(True, alpha=0.3)
+
+            # Embedding variances
+            variances = np.var(embeddings, axis=1)
+            axes[1, 0].hist(variances, bins=50, alpha=0.7, edgecolor='black', color='green')
+            axes[1, 0].set_title('Distribution of Embedding Variances')
+            axes[1, 0].set_xlabel('Variance')
+            axes[1, 0].set_ylabel('Frequency')
+            axes[1, 0].grid(True, alpha=0.3)
+
+            # Sparsity
+            sparsity = np.mean(embeddings == 0, axis=1)
+            axes[1, 1].hist(sparsity, bins=50, alpha=0.7, edgecolor='black', color='purple')
+            axes[1, 1].set_title('Embedding Sparsity Distribution')
+            axes[1, 1].set_xlabel('Fraction of Zeros')
+            axes[1, 1].set_ylabel('Frequency')
+            axes[1, 1].grid(True, alpha=0.3)
+
+            plt.tight_layout()
+            viz_path = os.path.join(embeddings_dir, f'{phase}_quality_analysis.png')
+            plt.savefig(viz_path, dpi=300, bbox_inches='tight', facecolor='white')
+            plt.close()
+
+        except Exception as e:
+            print(f"⚠ Failed to create quality analysis: {e}")
+
+    def _create_embedding_html_summary(self, embeddings: np.ndarray, metadata: pd.DataFrame,
+                                     phase: str, embeddings_dir: str):
+        """Create HTML summary for embedding analysis"""
+        try:
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>{phase.capitalize()} Embedding Analysis</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 40px; }}
+                    .header {{ text-align: center; color: #333; }}
+                    .stats {{ background: #f5f5f5; padding: 20px; border-radius: 5px; }}
+                    .stats th {{ text-align: left; padding: 5px; }}
+                    .stats td {{ padding: 5px; }}
+                    .viz-container {{ text-align: center; margin: 20px 0; }}
+                    .viz-container img {{ max-width: 100%; height: auto; border: 1px solid #ddd; }}
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>{phase.capitalize()} Embedding Analysis</h1>
+                    <p>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                </div>
+
+                <div class="stats">
+                    <h2>Embedding Statistics</h2>
+                    <table>
+                        <tr><th>Total Embeddings</th><td>{len(embeddings):,}</td></tr>
+                        <tr><th>Embedding Dimension</th><td>{embeddings.shape[1]}</td></tr>
+                        <tr><th>Average Norm</th><td>{np.mean(np.linalg.norm(embeddings, axis=1)):.4f}</td></tr>
+                        <tr><th>Average Mean</th><td>{np.mean(np.mean(embeddings, axis=1)):.4f}</td></tr>
+                        <tr><th>Average Variance</th><td>{np.mean(np.var(embeddings, axis=1)):.4f}</td></tr>
+                        <tr><th>Sparsity</th><td>{np.mean(np.mean(embeddings == 0, axis=1)):.4f}</td></tr>
+                    </table>
+                </div>
+
+                <div class="viz-container">
+                    <h2>Visualizations</h2>
+                    <img src="{phase}_dimensionality_reduction.png" alt="Dimensionality Reduction">
+                    <img src="{phase}_clustering_analysis.png" alt="Clustering Analysis">
+                    <img src="{phase}_quality_analysis.png" alt="Quality Analysis">
+                </div>
+            </body>
+            </html>
+            """
+
+            html_path = os.path.join(embeddings_dir, f'{phase}_embedding_analysis.html')
+            with open(html_path, 'w') as f:
+                f.write(html_content)
+
+        except Exception as e:
+            print(f"⚠ Failed to create HTML summary: {e}")
 
 
 def get_optimal_batch_size(model, device, input_size=(3, 128, 128)):
