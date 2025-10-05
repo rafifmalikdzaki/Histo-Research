@@ -59,7 +59,7 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
             'train': {'embeddings': [], 'metadata': [], 'epoch_indices': []},
             'val': {'embeddings': [], 'metadata': [], 'epoch_indices': []}
         }
-        self.current_epoch = 0
+        self._training_epoch = 0
 
         # Training timing and performance tracking
         self.training_times = []
@@ -913,7 +913,7 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
         input_np = input_tensor.detach().cpu().numpy()
 
         # Calculate current epoch
-        current_epoch = self.current_epoch
+        current_epoch = self._training_epoch
 
         # Sample embeddings to avoid collecting too many
         max_per_batch = max(1, self.embeddings_per_epoch // 100)  # Rough estimate of batches per epoch
@@ -944,13 +944,13 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
     def on_train_epoch_end(self):
         """Called at the end of each training epoch - save collected embeddings"""
 
-        self.current_epoch += 1  # Increment epoch counter
+        self._training_epoch += 1  # Increment epoch counter
 
         # Save embeddings collected during this epoch
         for phase in ['train', 'val']:
             if self.epoch_embeddings_collection[phase]['embeddings']:
                 self._save_epoch_embeddings(phase)
-                print(f"✅ Epoch {self.current_epoch-1}: Saved {len(self.epoch_embeddings_collection[phase]['embeddings'])} {phase} embeddings")
+                print(f"✅ Epoch {self._training_epoch-1}: Saved {len(self.epoch_embeddings_collection[phase]['embeddings'])} {phase} embeddings")
 
         # Clear epoch collection for next epoch
         for phase in ['train', 'val']:
@@ -980,7 +980,7 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
             metadata_list = self.epoch_embeddings_collection[phase]['metadata']
 
             # Save epoch-specific embeddings
-            epoch_num = self.current_epoch - 1
+            epoch_num = self._training_epoch - 1
             embeddings_file = os.path.join(embeddings_dir, f'{phase}_embeddings_epoch_{epoch_num:03d}.npy')
             np.save(embeddings_file, embeddings_array)
 
