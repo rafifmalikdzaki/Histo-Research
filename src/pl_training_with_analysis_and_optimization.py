@@ -942,15 +942,19 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                 self.epoch_embeddings_collection[phase]['epoch_indices'].append(current_epoch)
 
     def on_train_epoch_end(self):
-        """Called at the end of each training epoch - save collected embeddings"""
+        """Called at the end of each training epoch - save collected embeddings and run analysis."""
 
         self._training_epoch += 1  # Increment epoch counter
 
         # Save embeddings collected during this epoch
         for phase in ['train', 'val']:
             if self.epoch_embeddings_collection[phase]['embeddings']:
-                self._save_epoch_embeddings(phase)
+                embeddings_file, metadata_file = self._save_epoch_embeddings(phase)
                 print(f"✅ Epoch {self._training_epoch-1}: Saved {len(self.epoch_embeddings_collection[phase]['embeddings'])} {phase} embeddings")
+                
+                # Run analysis on epoch embeddings
+                if embeddings_file and metadata_file:
+                    self._run_epoch_embedding_analysis(phase, embeddings_file, metadata_file)
 
         # Clear epoch collection for next epoch
         for phase in ['train', 'val']:
@@ -958,11 +962,31 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                 'embeddings': [], 'metadata': [], 'epoch_indices': []
             }
 
+    def _run_epoch_embedding_analysis(self, phase, embeddings_file, metadata_file):
+        """Run analysis on embeddings from a single epoch."""
+        if not self.auto_analyzer:
+            return
+
+        try:
+            embeddings = np.load(embeddings_file)
+            metadata = pd.read_csv(metadata_file)
+            
+            epoch_num = self._training_epoch - 1
+            epoch_analysis_dir = os.path.join(self.auto_analyzer.get_subdir_path('embeddings'), f'epoch_{epoch_num:03d}')
+            os.makedirs(epoch_analysis_dir, exist_ok=True)
+
+            # Run the same visualizations as at the end of training
+            self._create_embedding_visualizations(embeddings, metadata, f"{phase}_epoch_{epoch_num}", epoch_analysis_dir)
+            print(f"✓ Epoch {epoch_num}: Embedding analysis complete for {phase} phase.")
+
+        except Exception as e:
+            print(f"⚠ Failed to run epoch embedding analysis for {phase} phase, epoch {epoch_num}: {e}")
+
     def _save_epoch_embeddings(self, phase: str):
         """Save embeddings collected during current epoch"""
 
         if not self.epoch_embeddings_collection[phase]['embeddings']:
-            return
+            return None, None
 
         try:
             import pandas as pd
@@ -994,9 +1018,12 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                 self.embeddings_storage[phase]['embeddings'].extend(embeddings_array.tolist())
                 self.embeddings_storage[phase]['metadata'].extend(metadata_list)
                 self.embeddings_storage[phase]['batch_indices'].extend([epoch_num] * len(embeddings_array))
+            
+            return embeddings_file, metadata_file
 
         except Exception as e:
             print(f"⚠ Failed to save {phase} embeddings for epoch {epoch_num}: {e}")
+            return None, None
 
     def _create_embedding_visualizations(self, embeddings: np.ndarray, metadata: pd.DataFrame,
                                        phase: str, embeddings_dir: str):
@@ -1014,7 +1041,8 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
         self._create_dimensionality_reduction_plots(embeddings, metadata, phase, embeddings_dir)
 
         # 3. Embedding clustering analysis
-        self._create_clustering_analysis(embeddings, metadata, phase, embeddings_dir)
+        if self.auto_analyzer:
+            self.auto_analyzer.analyze_embedding_clustering(embeddings, metadata, phase, embeddings_dir)
 
         # 4. Embedding quality metrics
         self._create_embedding_quality_analysis(embeddings, metadata, phase, embeddings_dir)
@@ -1215,78 +1243,7 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
         except Exception as e:
             print(f"⚠ Failed to create dimensionality reduction plots: {e}")
 
-    def _create_clustering_analysis(self, embeddings: np.ndarray, metadata: pd.DataFrame,
-                                  phase: str, embeddings_dir: str):
-        """Create clustering analysis"""
-        try:
-            import matplotlib.pyplot as plt
-            from sklearn.cluster import KMeans
-            from sklearn.metrics import silhouette_score
 
-            # Sample if too many embeddings
-            max_samples = 2000
-            if len(embeddings) > max_samples:
-                indices = np.random.choice(len(embeddings), max_samples, replace=False)
-                embeddings_sample = embeddings[indices]
-            else:
-                embeddings_sample = embeddings
-
-            # K-means clustering
-            n_clusters = min(8, len(embeddings_sample) // 10)
-            if n_clusters < 2:
-                return
-
-            kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-            cluster_labels = kmeans.fit_predict(embeddings_sample)
-
-            # Calculate silhouette score
-            sil_score = silhouette_score(embeddings_sample, cluster_labels)
-
-            # Create visualization
-            fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-            fig.suptitle(f'{phase.capitalize()} Embedding Clustering Analysis', fontsize=16, fontweight='bold')
-
-            # Cluster distribution
-            axes[0, 0].hist(cluster_labels, bins=n_clusters, alpha=0.7, edgecolor='black')
-            axes[0, 0].set_title(f'Cluster Distribution (k={n_clusters})')
-            axes[0, 0].set_xlabel('Cluster ID')
-            axes[0, 0].set_ylabel('Count')
-            axes[0, 0].grid(True, alpha=0.3)
-
-            # Silhouette score
-            axes[0, 1].bar(['Silhouette Score'], [sil_score], alpha=0.7, color='coral')
-            axes[0, 1].set_title('Clustering Quality')
-            axes[0, 1].set_ylabel('Score')
-            axes[0, 1].set_ylim(0, 1)
-            axes[0, 1].grid(True, alpha=0.3)
-
-            # Cluster centers (first 2 dimensions for visualization)
-            if embeddings_sample.shape[1] >= 2:
-                centers_2d = kmeans.cluster_centers_[:, :2]
-                axes[1, 0].scatter(embeddings_sample[:, 0], embeddings_sample[:, 1],
-                                 c=cluster_labels, alpha=0.6, s=30, cmap='tab10')
-                axes[1, 0].scatter(centers_2d[:, 0], centers_2d[:, 1],
-                                 c='red', marker='x', s=200, linewidths=3)
-                axes[1, 0].set_title('Cluster Centers (First 2 Dimensions)')
-                axes[1, 0].set_xlabel('Dimension 1')
-                axes[1, 0].set_ylabel('Dimension 2')
-                axes[1, 0].grid(True, alpha=0.3)
-            else:
-                axes[1, 0].text(0.5, 0.5, 'Embeddings have < 2 dimensions',
-                               ha='center', va='center', transform=axes[1, 0].transAxes)
-
-            # Cluster sizes pie chart
-            unique_labels, counts = np.unique(cluster_labels, return_counts=True)
-            axes[1, 1].pie(counts, labels=[f'Cluster {i}' for i in unique_labels], autopct='%1.1f%%')
-            axes[1, 1].set_title('Cluster Size Distribution')
-
-            plt.tight_layout()
-            viz_path = os.path.join(embeddings_dir, f'{phase}_clustering_analysis.png')
-            plt.savefig(viz_path, dpi=300, bbox_inches='tight', facecolor='white')
-            plt.close()
-
-        except Exception as e:
-            print(f"⚠ Failed to create clustering analysis: {e}")
 
     def _create_embedding_quality_analysis(self, embeddings: np.ndarray, metadata: pd.DataFrame,
                                          phase: str, embeddings_dir: str):

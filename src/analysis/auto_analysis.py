@@ -37,6 +37,12 @@ except ImportError:
     print("⚠ wandb not available - W&B logging will be disabled")
 
 try:
+    from umap import UMAP
+    UMAP_AVAILABLE = True
+except ImportError:
+    UMAP_AVAILABLE = False
+
+try:
     from models.model import DAE_KAN_Attention
 except ImportError:
     from src.models.model import DAE_KAN_Attention
@@ -1659,6 +1665,108 @@ Training Progress:
             json.dump(data, f, indent=2, default=str)
 
         return save_path
+
+    def analyze_embedding_clustering(self, embeddings: np.ndarray, metadata: pd.DataFrame,
+                                     phase: str, embeddings_dir: str, k: int = 6):
+        """
+        Perform and visualize clustering on embeddings using various algorithms.
+
+        Args:
+            embeddings (np.ndarray): The embeddings to cluster.
+            metadata (pd.DataFrame): Metadata associated with the embeddings.
+            phase (str): The phase of training (e.g., 'train', 'val').
+            embeddings_dir (str): Directory to save the analysis plots.
+            k (int): The number of clusters.
+        """
+        try:
+            from sklearn.cluster import KMeans, BisectingKMeans, GaussianMixture
+            from sklearn.metrics import silhouette_score
+            from sklearn.preprocessing import StandardScaler
+
+            if not UMAP_AVAILABLE:
+                print("⚠ UMAP not available, skipping clustering visualization. Please install umap-learn.")
+                return
+
+            # Sample if too many embeddings
+            max_samples = 2000
+            if len(embeddings) > max_samples:
+                indices = np.random.choice(len(embeddings), max_samples, replace=False)
+                embeddings_sample = embeddings[indices]
+            else:
+                embeddings_sample = embeddings
+
+            if len(embeddings_sample) < k * 2:
+                print(f"⚠ Not enough embeddings ({len(embeddings_sample)}) for clustering with k={k}.")
+                return
+
+            # Standardize
+            scaler = StandardScaler()
+            embeddings_scaled = scaler.fit_transform(embeddings_sample)
+
+            # Dimensionality reduction for visualization
+            reducer = UMAP(n_neighbors=min(15, len(embeddings_sample)-1), min_dist=0.1, random_state=42)
+            embedding_2d = reducer.fit_transform(embeddings_scaled)
+
+            # Clustering models
+            clustering_models = {
+                'KMeans': KMeans(n_clusters=k, random_state=42, n_init='auto'),
+                'Gaussian Mixture': GaussianMixture(n_components=k, random_state=42),
+                'Bisecting KMeans': BisectingKMeans(n_clusters=k, random_state=42)
+            }
+
+            fig, axes = plt.subplots(len(clustering_models), 3, figsize=(20, 5 * len(clustering_models)), squeeze=False)
+            fig.suptitle(f'{phase.capitalize()} Embedding Clustering Analysis (k={k})', fontsize=16, fontweight='bold')
+
+            for i, (name, model) in enumerate(clustering_models.items()):
+                # Fit model and get labels
+                cluster_labels = model.fit_predict(embeddings_scaled)
+
+                # Calculate silhouette score
+                if len(np.unique(cluster_labels)) > 1:
+                    sil_score = silhouette_score(embeddings_scaled, cluster_labels)
+                else:
+                    sil_score = -1  # Not possible to calculate
+
+                # 1. Scatter plot of clusters
+                ax = axes[i, 0]
+                scatter = ax.scatter(embedding_2d[:, 0], embedding_2d[:, 1], c=cluster_labels, cmap='viridis', s=10, alpha=0.7)
+                ax.set_title(f'{name}: UMAP Projection')
+                ax.set_xlabel('UMAP 1')
+                ax.set_ylabel('UMAP 2')
+                ax.grid(True, alpha=0.3)
+                if len(np.unique(cluster_labels)) > 1:
+                    legend1 = ax.legend(*scatter.legend_elements(), title="Clusters")
+                    ax.add_artist(legend1)
+
+                # 2. Cluster distribution
+                ax = axes[i, 1]
+                ax.hist(cluster_labels, bins=np.arange(k + 1) - 0.5, rwidth=0.8, alpha=0.7)
+                ax.set_title(f'{name}: Cluster Distribution')
+                ax.set_xlabel('Cluster ID')
+                ax.set_ylabel('Count')
+                ax.set_xticks(range(k))
+                ax.grid(True, alpha=0.3)
+
+                # 3. Silhouette score
+                ax = axes[i, 2]
+                ax.bar(['Silhouette Score'], [sil_score], color='coral', alpha=0.7)
+                ax.set_title(f'{name}: Clustering Quality')
+                ax.set_ylabel('Score')
+                ax.set_ylim(-1, 1)
+                ax.text(0, sil_score, f'{sil_score:.3f}', ha='center', va='bottom' if sil_score >= 0 else 'top')
+                ax.grid(True, alpha=0.3)
+
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+            viz_path = os.path.join(embeddings_dir, f'{phase}_clustering_analysis.png')
+            plt.savefig(viz_path, dpi=300, bbox_inches='tight', facecolor='white')
+            plt.close()
+
+            print(f"✓ Clustering analysis saved to {viz_path}")
+
+        except ImportError as e:
+            print(f"⚠ Clustering analysis failed due to missing package: {e}. Please install umap-learn, scikit-learn.")
+        except Exception as e:
+            print(f"⚠ Failed to create clustering analysis: {e}")
 
     def cleanup(self):
         """Cleanup hooks and data"""
