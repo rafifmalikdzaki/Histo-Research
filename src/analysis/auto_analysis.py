@@ -28,6 +28,14 @@ import fcntl  # For file locking
 import tempfile
 warnings.filterwarnings('ignore')
 
+# Try to import wandb for logging
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+    print("⚠ wandb not available - W&B logging will be disabled")
+
 try:
     from models.model import DAE_KAN_Attention
 except ImportError:
@@ -36,14 +44,19 @@ except ImportError:
 
 class AutomaticAnalyzer:
     """
-    Automatic analysis system that integrates all analysis components
+    Automatic analysis system that integrates all analysis components with run-based organization
     """
 
-    def __init__(self, model: nn.Module, device: str, save_dir: str = "auto_analysis"):
+    def __init__(self, model: nn.Module, device: str, save_dir: str = "auto_analysis",
+                 run_id: str = None, experiment_config: dict = None, logger=None):
         self.model = model
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
-        self.save_dir = save_dir
-        os.makedirs(save_dir, exist_ok=True)
+        self.run_id = run_id or f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.experiment_config = experiment_config or {}
+        self.logger = logger  # W&B logger reference
+
+        # Create organized directory structure
+        self.save_dir = self._create_organized_directory_structure(save_dir)
 
         # Initialize analysis data storage
         self.batch_metrics = []
@@ -58,9 +71,122 @@ class AutomaticAnalyzer:
         # Analysis frequency
         self.analysis_frequency = 100  # Run full analysis every N batches
         self.quick_analysis_frequency = 20  # Run quick analysis every N batches
-        
+        self.dashboard_frequency = 200  # Run comprehensive dashboard every N batches
+
+        # W&B logging settings
+        self.log_to_wandb = WANDB_AVAILABLE and logger is not None
+        self.wandb_log_frequencies = {
+            'metrics': 10,  # Log metrics every N batches
+            'visualizations': 100,  # Log basic visualizations every N batches
+            'paper_figures': 200,  # Log paper figures every N batches
+            'individual_components': 500  # Log individual components every N batches
+        }
+
         # File locking to prevent concurrent access
-        self.lock_file = os.path.join(save_dir, ".analysis.lock")
+        self.lock_file = os.path.join(self.save_dir, ".analysis.lock")
+
+        # Save experiment configuration
+        self._save_experiment_config()
+
+        print(f"✓ W&B logging enabled: {self.log_to_wandb}")
+
+    def _create_organized_directory_structure(self, base_dir: str) -> str:
+        """
+        Create organized directory structure for this run:
+        base_dir/
+        ├── run_id/
+        │   ├── metrics/
+        │   ├── visualizations/
+        │   ├── paper_figures/
+        │   ├── individual_components/
+        │   └── logs/
+        """
+        # Create run-specific directory
+        run_dir = os.path.join(base_dir, self.run_id)
+        os.makedirs(run_dir, exist_ok=True)
+
+        # Create subdirectories
+        subdirs = ['metrics', 'visualizations', 'paper_figures', 'individual_components', 'logs']
+        for subdir in subdirs:
+            os.makedirs(os.path.join(run_dir, subdir), exist_ok=True)
+
+        return run_dir
+
+    def _save_experiment_config(self):
+        """Save experiment configuration to run directory"""
+        config_path = os.path.join(self.save_dir, 'experiment_config.json')
+
+        config_data = {
+            'run_id': self.run_id,
+            'created_at': datetime.now().isoformat(),
+            'device': str(self.device),
+            'analysis_frequency': self.analysis_frequency,
+            'quick_analysis_frequency': self.quick_analysis_frequency,
+            **self.experiment_config
+        }
+
+        with open(config_path, 'w') as f:
+            json.dump(config_data, f, indent=2)
+
+        print(f"✓ Experiment config saved: {config_path}")
+
+    def get_subdir_path(self, subdir: str) -> str:
+        """Get path to a specific subdirectory"""
+        return os.path.join(self.save_dir, subdir)
+
+    def log_to_wandb_safe(self, data: Dict, prefix: str = "", step: int = None):
+        """Safely log data to W&B with error handling"""
+        if not self.log_to_wandb:
+            return
+
+        try:
+            # Add prefix to all keys
+            if prefix:
+                prefixed_data = {f"{prefix}/{k}": v for k, v in data.items()}
+            else:
+                prefixed_data = data
+
+            # Log to W&B (skip if step is provided and might be outdated to prevent warnings)
+            if step is not None and step < 0:
+                return
+            wandb.log(prefixed_data, step=step)
+        except Exception as e:
+            print(f"⚠ Failed to log to W&B: {e}")
+
+    def log_image_to_wandb_safe(self, image_path: str, caption: str, step: int = None):
+        """Safely log image to W&B with error handling"""
+        if not self.log_to_wandb or not os.path.exists(image_path):
+            return
+
+        try:
+            # Skip if step is provided and might be outdated to prevent warnings
+            if step is not None and step < 0:
+                return
+            wandb.log({caption: wandb.Image(image_path)}, step=step)
+        except Exception as e:
+            print(f"⚠ Failed to log image {caption} to W&B: {e}")
+
+    def log_table_to_wandb_safe(self, df: pd.DataFrame, table_name: str, step: int = None):
+        """Safely log table to W&B with error handling"""
+        if not self.log_to_wandb:
+            return
+
+        try:
+            # Skip if step is provided and might be outdated to prevent warnings
+            if step is not None and step < 0:
+                return
+            table = wandb.Table(dataframe=df)
+            wandb.log({table_name: table}, step=step)
+        except Exception as e:
+            print(f"⚠ Failed to log table {table_name} to W&B: {e}")
+
+    def should_log_to_wandb(self, log_type: str, batch_idx: int) -> bool:
+        """Check if should log to W&B based on frequency"""
+        if not self.log_to_wandb:
+            return False
+
+        frequency = self.wandb_log_frequencies.get(log_type, self.analysis_frequency)
+        return batch_idx % frequency == 0
 
     def _acquire_lock(self):
         """Acquire file lock to prevent concurrent access"""
@@ -297,6 +423,21 @@ class AutomaticAnalyzer:
         # Store batch metrics
         self.batch_metrics.append(metrics)
 
+        # Log to W&B if enabled and at the right frequency
+        if self.should_log_to_wandb('metrics', batch_idx):
+            wandb_metrics = {
+                'loss': loss,
+                'mse': metrics['mse'],
+                'ssim': metrics['ssim']
+            }
+
+            # Add attention metrics
+            for key, value in metrics.items():
+                if 'attention_' in key and isinstance(value, (int, float)):
+                    wandb_metrics[key] = value
+
+            self.log_to_wandb_safe(wandb_metrics, f"{phase}/analysis", step=batch_idx)
+
         return metrics
 
     def _calculate_ssim(self, img1: torch.Tensor, img2: torch.Tensor) -> float:
@@ -369,7 +510,9 @@ class AutomaticAnalyzer:
             elif attention_map.ndim == 3 and attention_map.shape[0] > 1:
                 attention_map = np.mean(attention_map, axis=0)
 
-            im = ax4.imshow(attention_map, cmap='jet')
+            # Ensure attention map is float32 for matplotlib compatibility
+            attention_map_float = attention_map.astype(np.float32)
+            im = ax4.imshow(attention_map_float, cmap='jet')
             ax4.set_title(f'Attention: {bam_keys[0]}')
             ax4.axis('off')
             plt.colorbar(im, ax=ax4, fraction=0.046)
@@ -470,10 +613,14 @@ class AutomaticAnalyzer:
 
         plt.suptitle(f'DAE-KAN Analysis - {phase.upper()} Batch {batch_idx}', fontsize=16, fontweight='bold')
 
-        # Save visualization
-        save_path = os.path.join(self.save_dir, f'live_batch_visualization_{phase}.png')
+        # Save visualization to visualizations subdirectory
+        save_path = os.path.join(self.get_subdir_path('visualizations'), f'live_batch_visualization_{phase}.png')
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
         plt.close()
+
+        # Log to W&B if enabled and at the right frequency
+        if self.should_log_to_wandb('visualizations', batch_idx):
+            self.log_image_to_wandb_safe(save_path, f"{phase}/batch_visualization", step=batch_idx)
 
         return save_path
 
@@ -538,11 +685,13 @@ class AutomaticAnalyzer:
                     elif attention_map.ndim == 3 and attention_map.shape[0] > 1:
                         attention_map = np.mean(attention_map, axis=0)
 
-                    im_attn = ax_attn.imshow(attention_map, cmap='jet')
+                    # Ensure attention map is float32 for matplotlib compatibility
+                    attention_map_float = attention_map.astype(np.float32)
+                    im_attn = ax_attn.imshow(attention_map_float, cmap='jet')
                     ax_attn.set_title(f'Attention: {bam_key}', fontsize=12, fontweight='bold')
                     ax_attn.axis('off')
                     plt.colorbar(im_attn, ax=ax_attn, fraction=0.046)
-                    attention_figs[bam_key] = attention_map
+                    attention_figs[bam_key] = attention_map_float
 
             # === SECOND ROW: Training Progress ===
 
@@ -673,8 +822,7 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
             plt.suptitle('DAE-KAN Attention Analysis Dashboard', fontsize=18, fontweight='bold', y=0.98)
 
             # Don't save the combined dashboard - only save individual figures
-            paper_figs_dir = os.path.join(self.save_dir, 'paper_figures')
-            os.makedirs(paper_figs_dir, exist_ok=True)
+            paper_figs_dir = self.get_subdir_path('paper_figures')
 
             individual_figs = {}
 
@@ -702,7 +850,9 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
             if bam_keys:
                 attention_map = attention_figs.get(bam_keys[0])
                 if attention_map is not None:
-                    im4 = ax4.imshow(attention_map, cmap='jet')
+                    # Ensure attention map is float32 for matplotlib compatibility
+                    attention_map_float = attention_map.astype(np.float32)
+                    im4 = ax4.imshow(attention_map_float, cmap='jet')
                     ax4.set_title('Attention Map', fontsize=14, fontweight='bold')
                     ax4.axis('off')
                     plt.colorbar(im4, ax=ax4, fraction=0.046)
@@ -776,7 +926,9 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
                 if attention_map is not None:
                     # Attention heatmap
                     ax_attn_map = fig3.add_subplot(gs3[i, 0])
-                    im = ax_attn_map.imshow(attention_map, cmap='jet')
+                    # Ensure attention map is float32 for matplotlib compatibility
+                    attention_map_float = attention_map.astype(np.float32)
+                    im = ax_attn_map.imshow(attention_map_float, cmap='jet')
                     ax_attn_map.set_title(f'{bam_key} Heatmap', fontsize=12, fontweight='bold')
                     ax_attn_map.axis('off')
                     plt.colorbar(im, ax=ax_attn_map, fraction=0.046)
@@ -871,6 +1023,11 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
 
             plt.close(fig)  # Close main dashboard figure without saving
 
+            # Log paper figures to W&B if enabled and at the right frequency
+            if self.should_log_to_wandb('paper_figures', batch_idx):
+                for fig_name, fig_path in individual_figs.items():
+                    self.log_image_to_wandb_safe(fig_path, f"{phase}/paper_{fig_name}", step=batch_idx)
+
             return {
                 'individual_figures': individual_figs
             }
@@ -889,9 +1046,8 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
         
         try:
             # Create directory for individual components
-            components_dir = os.path.join(self.save_dir, 'individual_components')
-            os.makedirs(components_dir, exist_ok=True)
-            
+            components_dir = self.get_subdir_path('individual_components')
+
             # Create subdirectory for this batch
             batch_dir = os.path.join(components_dir, f'latest_{phase}_components')
             os.makedirs(batch_dir, exist_ok=True)
@@ -955,7 +1111,9 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
                 # Attention heatmap
                 fig_attn = plt.figure(figsize=(8, 8))
                 ax_attn = fig_attn.add_subplot(111)
-                im_attn = ax_attn.imshow(attention_map, cmap='jet')
+                # Ensure attention map is float32 for matplotlib compatibility
+                attention_map_float = attention_map.astype(np.float32)
+                im_attn = ax_attn.imshow(attention_map_float, cmap='jet')
                 ax_attn.set_title(f'Attention Map: {bam_key}', fontsize=14, fontweight='bold')
                 ax_attn.axis('off')
                 plt.colorbar(im_attn, ax=ax_attn, fraction=0.046)
@@ -1132,6 +1290,11 @@ Training Progress:
                 plt.close()
                 saved_files['summary_statistics'] = summary_path
             
+            # Log individual components to W&B if enabled and at the right frequency
+            if self.should_log_to_wandb('individual_components', batch_idx):
+                for component_name, component_path in saved_files.items():
+                    self.log_image_to_wandb_safe(component_path, f"{phase}/components_{component_name}", step=batch_idx)
+
             return saved_files
         finally:
             # Release lock
@@ -1174,7 +1337,7 @@ Training Progress:
         if filename is None:
             filename = f'metrics_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
 
-        save_path = os.path.join(self.save_dir, filename)
+        save_path = os.path.join(self.get_subdir_path('metrics'), filename)
 
         # Prepare data for JSON serialization
         data = {
@@ -1198,3 +1361,187 @@ Training Progress:
             hook.remove()
         self.attention_hooks.clear()
         self.attention_data.clear()
+
+    @staticmethod
+    def create_ablation_study_comparison(base_dir: str, run_ids: List[str],
+                                      save_path: str = None) -> str:
+        """
+        Create ablation study comparison across multiple runs
+
+        Args:
+            base_dir: Base directory containing all runs
+            run_ids: List of run IDs to compare
+            save_path: Path to save comparison figure
+
+        Returns:
+            Path to saved comparison figure
+        """
+        import matplotlib.patches as mpatches
+
+        if save_path is None:
+            save_path = os.path.join(base_dir, 'ablation_study_comparison.png')
+
+        # Collect data from all runs
+        all_data = {}
+
+        for run_id in run_ids:
+            run_dir = os.path.join(base_dir, run_id)
+            metrics_dir = os.path.join(run_dir, 'metrics')
+
+            if not os.path.exists(metrics_dir):
+                continue
+
+            # Load latest metrics file
+            metrics_files = [f for f in os.listdir(metrics_dir) if f.endswith('.json')]
+            if not metrics_files:
+                continue
+
+            latest_metrics_file = sorted(metrics_files)[-1]
+            metrics_path = os.path.join(metrics_dir, latest_metrics_file)
+
+            try:
+                with open(metrics_path, 'r') as f:
+                    data = json.load(f)
+                    all_data[run_id] = data
+            except Exception as e:
+                print(f"⚠ Could not load metrics for {run_id}: {e}")
+                continue
+
+        if len(all_data) < 2:
+            print("⚠ Need at least 2 runs for comparison")
+            return None
+
+        # Create comparison figure
+        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+        fig.suptitle('Ablation Study Comparison Across Runs', fontsize=16, fontweight='bold')
+
+        # Colors for different runs
+        colors = plt.cm.tab10(np.linspace(0, 1, len(all_data)))
+
+        # 1. Loss comparison
+        ax1 = axes[0, 0]
+        for i, (run_id, data) in enumerate(all_data.items()):
+            if 'batch_metrics' in data:
+                losses = [m['loss'] for m in data['batch_metrics'] if 'loss' in m]
+                ax1.plot(losses, label=run_id, color=colors[i], linewidth=2, alpha=0.8)
+        ax1.set_title('Training Loss Comparison')
+        ax1.set_xlabel('Batch')
+        ax1.set_ylabel('Loss')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+
+        # 2. SSIM comparison
+        ax2 = axes[0, 1]
+        for i, (run_id, data) in enumerate(all_data.items()):
+            if 'batch_metrics' in data:
+                ssims = [m['ssim'] for m in data['batch_metrics'] if 'ssim' in m]
+                ax2.plot(ssims, label=run_id, color=colors[i], linewidth=2, alpha=0.8)
+        ax2.set_title('SSIM Comparison')
+        ax2.set_xlabel('Batch')
+        ax2.set_ylabel('SSIM')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+
+        # 3. Attention entropy comparison
+        ax3 = axes[0, 2]
+        for i, (run_id, data) in enumerate(all_data.items()):
+            if 'batch_metrics' in data:
+                entropies = [m.get('attention_bam_384_attention_entropy', 0)
+                           for m in data['batch_metrics']]
+                ax3.plot(entropies, label=run_id, color=colors[i], linewidth=2, alpha=0.8)
+        ax3.set_title('Attention Entropy Comparison')
+        ax3.set_xlabel('Batch')
+        ax3.set_ylabel('Entropy')
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+
+        # 4. Final metrics comparison (bar chart)
+        ax4 = axes[1, 0]
+        metrics_to_compare = ['loss', 'ssim', 'attention_bam_384_attention_entropy']
+
+        x = np.arange(len(metrics_to_compare))
+        width = 0.8 / len(all_data)
+
+        for i, (run_id, data) in enumerate(all_data.items()):
+            if 'summary' in data:
+                values = []
+                for metric in metrics_to_compare:
+                    key = f'{metric}_mean' if metric != 'loss' else 'latest_metrics.loss'
+
+                    if metric == 'loss':
+                        # Get final loss value
+                        final_loss = data['batch_metrics'][-1]['loss'] if data['batch_metrics'] else 0
+                        values.append(final_loss)
+                    elif f'{metric}_mean' in data['summary']:
+                        values.append(data['summary'][f'{metric}_mean'])
+                    else:
+                        values.append(0)
+
+                ax4.bar(x + i * width, values, width, label=run_id,
+                       color=colors[i], alpha=0.8)
+
+        ax4.set_title('Final Metrics Comparison')
+        ax4.set_xlabel('Metrics')
+        ax4.set_ylabel('Values')
+        ax4.set_xticks(x + width * (len(all_data) - 1) / 2)
+        ax4.set_xticklabels(['Loss', 'SSIM', 'Entropy'])
+        ax4.legend()
+        ax4.grid(True, alpha=0.3)
+
+        # 5. Attention concentration comparison
+        ax5 = axes[1, 1]
+        for i, (run_id, data) in enumerate(all_data.items()):
+            if 'batch_metrics' in data:
+                concentrations = [m.get('attention_bam_384_attention_concentration_10', 0)
+                                for m in data['batch_metrics']]
+                ax5.plot(concentrations, label=run_id, color=colors[i], linewidth=2, alpha=0.8)
+        ax5.set_title('Attention Concentration Comparison')
+        ax5.set_xlabel('Batch')
+        ax5.set_ylabel('Concentration')
+        ax5.legend()
+        ax5.grid(True, alpha=0.3)
+
+        # 6. Summary statistics table
+        ax6 = axes[1, 2]
+        ax6.axis('off')
+
+        # Create summary table
+        table_data = [['Run ID', 'Final Loss', 'Final SSIM', 'Avg Entropy', 'Total Batches']]
+
+        for run_id, data in all_data.items():
+            if 'batch_metrics' in data and len(data['batch_metrics']) > 0:
+                final_metrics = data['batch_metrics'][-1]
+                avg_entropy = np.mean([m.get('attention_bam_384_attention_entropy', 0)
+                                     for m in data['batch_metrics']])
+
+                table_data.append([
+                    run_id[:15] + '...' if len(run_id) > 15 else run_id,
+                    f"{final_metrics.get('loss', 0):.4f}",
+                    f"{final_metrics.get('ssim', 0):.4f}",
+                    f"{avg_entropy:.3f}",
+                    str(len(data['batch_metrics']))
+                ])
+
+        if len(table_data) > 1:
+            table = ax6.table(cellText=table_data[1:], colLabels=table_data[0],
+                            loc='center', cellLoc='center')
+            table.auto_set_font_size(False)
+            table.set_fontsize(10)
+            table.scale(1, 2)
+
+            # Style the table
+            for i in range(len(table_data)):
+                for j in range(len(table_data[0])):
+                    cell = table[(i, j) if i > 0 else (0, j)]
+                    if i == 0:  # Header row
+                        cell.set_facecolor('#40466e')
+                        cell.set_text_props(weight='bold', color='white')
+                    else:
+                        cell.set_facecolor('#f1f1f2')
+
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()
+
+        print(f"✓ Ablation study comparison saved: {save_path}")
+        return save_path

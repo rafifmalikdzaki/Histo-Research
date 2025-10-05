@@ -32,7 +32,10 @@ warnings.filterwarnings('ignore')
 # Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-from models.model import DAE_KAN_Attention
+# Add src to path
+sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+
+from models.factory import get_model
 from src.analysis.attention_visualizer import AttentionExtractor, AttentionVisualizer, AttentionAnalyzer
 from src.analysis.enhanced_attention_analysis import EnhancedAttentionAnalyzer
 from src.analysis.pathology_correlation import AttentionPathologyCorrelator
@@ -47,12 +50,16 @@ import pandas as pd
 
 class DAEKANInference:
     """
-    Comprehensive inference system for DAE-KAN model with analysis capabilities
+    Comprehensive inference system for DAE-KAN models with analysis capabilities.
+    Supports any model type for ablation studies.
     """
 
-    def __init__(self, model_path: str, device: str = "auto", analysis_config: Optional[Dict] = None):
+    def __init__(self, model_path: str, device: str = "auto", analysis_config: Optional[Dict] = None,
+                 model_name: str = None, model_config: Dict = None):
         self.model_path = model_path
         self.device = self._setup_device(device)
+        self.model_name = model_name or self._detect_model_type()
+        self.model_config = model_config or {}
         self.model = None
         self.analysis_config = analysis_config or self._default_analysis_config()
 
@@ -67,6 +74,20 @@ class DAEKANInference:
         self.inference_times = []
         self.memory_usage = []
         self.results = {}
+
+    def _detect_model_type(self) -> str:
+        """Detect model type from checkpoint path or metadata"""
+        # Try to infer from path name
+        path_lower = self.model_path.lower()
+        if 'dae_kan' in path_lower or 'attention' in path_lower:
+            return 'dae_kan_attention'
+        elif 'kan' in path_lower:
+            return 'kan_conv'
+        elif 'ae' in path_lower or 'autoencoder' in path_lower:
+            return 'autoencoder'
+        else:
+            # Default to DAE-KAN attention
+            return 'dae_kan_attention'
 
     def _setup_device(self, device: str) -> torch.device:
         """Setup computation device"""
@@ -98,12 +119,12 @@ class DAEKANInference:
         }
 
     def load_model(self) -> bool:
-        """Load the trained model"""
+        """Load the trained model (supports any model type)"""
         try:
-            print(f"Loading model from {self.model_path}...")
+            print(f"Loading model '{self.model_name}' from {self.model_path}...")
 
-            # Initialize model
-            self.model = DAE_KAN_Attention()
+            # Initialize model using factory
+            self.model = get_model(self.model_name)(**self.model_config)
 
             # Load state dict
             if self.model_path.endswith('.pth'):
@@ -115,6 +136,8 @@ class DAEKANInference:
                     print(f"Loaded checkpoint from epoch {checkpoint.get('epoch', 'unknown')}")
                 elif 'model' in checkpoint:
                     self.model.load_state_dict(checkpoint['model'])
+                elif 'model_state_dict' in checkpoint:
+                    self.model.load_state_dict(checkpoint['model_state_dict'])
                 else:
                     self.model.load_state_dict(checkpoint)
             else:
@@ -124,31 +147,55 @@ class DAEKANInference:
             self.model.to(self.device)
             self.model.eval()
 
-            # Initialize analysis components
+            # Initialize analysis components (if model supports attention analysis)
             self._initialize_analysis_components()
 
-            print("Model loaded successfully!")
+            print(f"✓ Model '{self.model_name}' loaded successfully!")
+            print(f"✓ Model has {sum(p.numel() for p in self.model.parameters()):,} total parameters")
             return True
 
         except Exception as e:
             print(f"Error loading model: {e}")
+            print(f"Available model types: {[name for name in dir(get_model._models) if not name.startswith('_')]}")
             return False
 
     def _initialize_analysis_components(self):
-        """Initialize all analysis components"""
+        """Initialize all analysis components (if supported by model)"""
         if self.analysis_config['enable_attention_analysis']:
-            self.attention_extractor = AttentionExtractor(self.model, device=str(self.device))
-            self.enhanced_analyzer = EnhancedAttentionAnalyzer(self.attention_extractor)
+            try:
+                self.attention_extractor = AttentionExtractor(self.model, device=str(self.device))
+                self.enhanced_analyzer = EnhancedAttentionAnalyzer(self.attention_extractor)
+                print(f"✓ Attention analysis enabled for model '{self.model_name}'")
+            except Exception as e:
+                print(f"⚠ Could not initialize attention analysis for model '{self.model_name}': {e}")
+                self.attention_extractor = None
+                self.enhanced_analyzer = None
 
-        if self.analysis_config['pathology_correlation']:
-            self.pathology_correlator = AttentionPathologyCorrelator(self.attention_extractor)
+        if self.analysis_config['pathology_correlation'] and self.attention_extractor:
+            try:
+                self.pathology_correlator = AttentionPathologyCorrelator(self.attention_extractor)
+                print(f"✓ Pathology correlation analysis enabled")
+            except Exception as e:
+                print(f"⚠ Could not initialize pathology correlation: {e}")
+                self.pathology_correlator = None
 
         # Initialize pathological validator
-        annotator = PathologicalFeatureAnnotator()
-        self.pathological_validator = AttentionPathologyValidator(self.attention_extractor, annotator)
+        if self.attention_extractor:
+            try:
+                annotator = PathologicalFeatureAnnotator()
+                self.pathological_validator = AttentionPathologyValidator(self.attention_extractor, annotator)
+                print(f"✓ Pathological validation enabled")
+            except Exception as e:
+                print(f"⚠ Could not initialize pathological validation: {e}")
+                self.pathological_validator = None
 
         if self.analysis_config['complexity_analysis']:
-            self.complexity_analyzer = ModelComplexityAnalyzer(self.model, device=str(self.device))
+            try:
+                self.complexity_analyzer = ModelComplexityAnalyzer(self.model, device=str(self.device))
+                print(f"✓ Complexity analysis enabled")
+            except Exception as e:
+                print(f"⚠ Could not initialize complexity analysis: {e}")
+                self.complexity_analyzer = None
 
     def preprocess_image(self, image_path: str) -> torch.Tensor:
         """Preprocess input image for inference"""
@@ -991,6 +1038,8 @@ Examples:
 
     parser.add_argument('--model_path', type=str, required=True,
                        help='Path to trained model (.pth file)')
+    parser.add_argument('--model_name', type=str,
+                       help='Model type (auto-detected if not specified)')
     parser.add_argument('--input_image', type=str,
                        help='Path to single input image')
     parser.add_argument('--input_dir', type=str,
@@ -1008,8 +1057,31 @@ Examples:
                        help='Enable comprehensive analysis (default: True)')
     parser.add_argument('--disable_analysis', action='store_true',
                        help='Disable analysis for faster inference')
+    parser.add_argument('--list_models', action='store_true',
+                       help='List available model types and exit')
 
     args = parser.parse_args()
+
+    # Handle list models request
+    if args.list_models:
+        print("Available model types for ablation studies:")
+        try:
+            from models.factory import get_model
+            available_models = []
+            for name in dir(get_model._models):
+                if not name.startswith('_'):
+                    available_models.append(name)
+
+            if available_models:
+                print("📋 Available Models:")
+                for i, model_name in enumerate(available_models, 1):
+                    print(f"  {i:2d}. {model_name}")
+                print(f"\n💡 Usage: python inference_dae_kan.py --model_path model.pth --model_name {available_models[0]} --input_image image.png")
+            else:
+                print("❌ No models found in factory")
+        except Exception as e:
+            print(f"❌ Error loading model factory: {e}")
+        return
 
     # Validate arguments
     if not args.input_image and not args.input_dir:
@@ -1051,8 +1123,12 @@ Examples:
 
     # Initialize inference system
     print("🚀 Initializing DAE-KAN Inference System...")
+    print(f"📋 Model: {args.model_name or 'auto-detect'}")
+    print(f"📁 Model path: {args.model_path}")
+
     inference_system = DAEKANInference(
         model_path=args.model_path,
+        model_name=args.model_name,
         device=args.device,
         analysis_config=analysis_config
     )

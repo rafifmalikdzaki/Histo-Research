@@ -52,17 +52,66 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
         """Initialize automatic analyzer after model is on correct device"""
         device = self.device
 
-        # Create analysis directory
-        analysis_dir = f"auto_analysis_{self.logger.experiment.name}" if hasattr(self, 'logger') else "auto_analysis"
+        # Create analysis directory and run ID
+        base_analysis_dir = "auto_analysis"
+        run_id = self.logger.experiment.name if hasattr(self, 'logger') and self.logger.experiment else f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-        # Initialize automatic analyzer
+        # Prepare experiment configuration for ablation study tracking
+        experiment_config = {
+            'model_name': self.model_name if hasattr(self, 'model_name') else 'unknown',
+            'batch_size': self.batch_size,
+            'analysis_frequency': self.analysis_frequency,
+            'learning_rate': 0.002,  # Default from configure_optimizers
+            'max_epochs': 30 if hasattr(self.trainer, 'max_epochs') else 'unknown',
+            'precision': str(self.trainer.precision) if hasattr(self.trainer, 'precision') else 'unknown',
+            'device': str(device),
+            'pytorch_version': torch.__version__,
+            'cuda_available': torch.cuda.is_available(),
+        }
+
+        # Add ablation study configuration if available
+        if hasattr(self, 'ablation_config'):
+            experiment_config.update({
+                'ablation_mode': self.ablation_config.get('ablation_mode', 'unknown'),
+                'ablation_description': self.ablation_config.get('description', ''),
+                'ablation_tags': self.ablation_config.get('tags', []),
+                'wandb_group': self.ablation_config.get('wandb_group', ''),
+                'wandb_run_name': self.ablation_config.get('run_name', ''),
+                'notes': self.ablation_config.get('notes', '')
+            })
+
+        # Add any hyperparameters from logger
+        if hasattr(self, 'logger') and hasattr(self.logger, 'experiment'):
+            if hasattr(self.logger.experiment, 'config'):
+                experiment_config.update(self.logger.experiment.config)
+
+        # Initialize automatic analyzer with run ID and config
         self.auto_analyzer = AutomaticAnalyzer(
             model=self.model,
             device=str(device),
-            save_dir=analysis_dir
+            save_dir=base_analysis_dir,
+            run_id=run_id,
+            experiment_config=experiment_config,
+            logger=self.logger  # Pass W&B logger for direct logging
         )
 
-        print(f"Automatic analyzer initialized. Saving to: {analysis_dir}")
+        # Update W&B logging frequencies if specified in args
+        if hasattr(self, 'trainer') and hasattr(self.trainer, 'optimizer') and hasattr(self.trainer.optimizers[0], 'param_groups'):
+            # This is a bit of a hack, but we need to access the args from the main script
+            # We'll update the frequencies when they're passed through the training loop
+            pass
+
+        # Update checkpoint directory to be within analysis directory
+        if hasattr(self, 'trainer') and hasattr(self.trainer, 'callbacks'):
+            for callback in self.trainer.callbacks:
+                if hasattr(callback, 'dirpath') and 'checkpoint' in callback.dirpath:
+                    callback.dirpath = os.path.join(self.auto_analyzer.save_dir, 'checkpoints')
+                    os.makedirs(callback.dirpath, exist_ok=True)
+                    print(f"✓ Checkpoints will be saved to: {callback.dirpath}")
+
+        print(f"✓ Automatic analyzer initialized for run: {run_id}")
+        print(f"✓ Analysis will be saved to: {self.auto_analyzer.save_dir}")
+        print(f"✓ Experiment config includes {len(experiment_config)} parameters")
 
     def forward(self, x):
         encoded, decoded, z = self.model(x)
@@ -154,11 +203,25 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                         phase="train"
                     )
 
-                    # Log visualization to W&B
+                    # Log visualization to W&B (also logged by AutoAnalyzer now)
                     if hasattr(self, 'logger') and self.logger is not None:
                         self.logger.experiment.log({
                             f'train/batch_visualization_{batch_idx}': wandb.Image(viz_path)
                         })
+
+                    # Create comprehensive paper dashboard
+                    if batch_idx % self.auto_analyzer.dashboard_frequency == 0:
+                        try:
+                            paper_dashboard = self.auto_analyzer.create_comprehensive_paper_dashboard(
+                                batch_idx=batch_idx,
+                                input_tensor=x,
+                                output_tensor=decoded,
+                                phase="train"
+                            )
+
+                            print(f"✓ Paper dashboard created for batch {batch_idx}")
+                        except Exception as e:
+                            print(f"⚠ Paper dashboard creation failed for batch {batch_idx}: {e}")
 
                     # Save metrics
                     self.auto_analyzer.save_metrics()
@@ -166,7 +229,16 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                     print(f"✓ Analysis completed for batch {batch_idx}")
 
             except Exception as e:
-                print(f"⚠ Analysis failed for batch {batch_idx}: {e}")
+                error_msg = f"⚠ Analysis failed for batch {batch_idx}: {e}"
+                print(error_msg)
+
+                # Log error to W&B
+                if hasattr(self, 'logger') and self.logger is not None:
+                    self.logger.experiment.log({
+                        'train/analysis_error_count': 1,
+                        'train/analysis_error_message': str(e)[:500]  # Limit length
+                    })
+
                 # Don't crash training if analysis fails
                 pass
 
@@ -237,16 +309,38 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                     phase="val"
                 )
 
-                # Log visualization to W&B
+                # Log visualization to W&B (also logged by AutoAnalyzer now)
                 if hasattr(self, 'logger') and self.logger is not None:
                     self.logger.experiment.log({
                         f'val/batch_visualization_{batch_idx}': wandb.Image(viz_path)
                     })
 
+                # Create paper dashboard for validation (less frequent)
+                if batch_idx % 2 == 0:  # Every 2nd validation batch
+                    try:
+                        paper_dashboard = self.auto_analyzer.create_comprehensive_paper_dashboard(
+                            batch_idx=batch_idx,
+                            input_tensor=x,
+                            output_tensor=decoded,
+                            phase="val"
+                        )
+                        print(f"✓ Validation paper dashboard created for batch {batch_idx}")
+                    except Exception as e:
+                        print(f"⚠ Validation paper dashboard creation failed for batch {batch_idx}: {e}")
+
                 print(f"✓ Validation analysis completed for batch {batch_idx}")
 
             except Exception as e:
-                print(f"⚠ Validation analysis failed for batch {batch_idx}: {e}")
+                error_msg = f"⚠ Validation analysis failed for batch {batch_idx}: {e}"
+                print(error_msg)
+
+                # Log error to W&B
+                if hasattr(self, 'logger') and self.logger is not None:
+                    self.logger.experiment.log({
+                        'val/analysis_error_count': 1,
+                        'val/analysis_error_message': str(e)[:500]  # Limit length
+                    })
+
                 # Don't crash validation if analysis fails
                 pass
 
@@ -442,9 +536,40 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', type=int, default=None, help='Batch size (auto-detected if not specified)')
     parser.add_argument('--num-workers', type=int, default=4, help='Number of data loader workers')
     parser.add_argument('--analysis-freq', type=int, default=100, help='Run analysis every N batches')
+    parser.add_argument('--dashboard-freq', type=int, default=200, help='Run comprehensive dashboard every N batches')
+    parser.add_argument('--wandb-metrics-freq', type=int, default=10, help='Log detailed metrics to W&B every N batches')
+    parser.add_argument('--wandb-viz-freq', type=int, default=100, help='Log visualizations to W&B every N batches')
+    parser.add_argument('--wandb-paper-freq', type=int, default=200, help='Log paper figures to W&B every N batches')
     parser.add_argument('--project-name', type=str, default='histopath-kan-optimized-analysis', help='W&B project name')
     parser.add_argument('--model-name', type=str, default="dae_kan_attention", help='Name of the model to use')
+
+    # Ablation study organization arguments
+    parser.add_argument('--ablation-mode', type=str, default='baseline',
+                       choices=['baseline', 'no-attention', 'different-batch-size', 'different-lr', 'different-architecture', 'custom'],
+                       help='Ablation study mode for organization')
+    parser.add_argument('--ablation-group', type=str, help='W&B group for organizing related experiments')
+    parser.add_argument('--experiment-name', type=str, help='Custom experiment name for W&B')
+    parser.add_argument('--ablation-tags', nargs='+', default=[], help='Additional tags for W&B organization')
+    parser.add_argument('--run-description', type=str, help='Description of this ablation run')
+
+    # Training duration control
+    parser.add_argument('--max-epochs', type=int, default=1, help='Maximum number of training epochs (default: 1)')
+    parser.add_argument('--min-epochs', type=int, default=1, help='Minimum number of training epochs (default: 1)')
+    parser.add_argument('--early-stopping', action='store_true', help='Enable early stopping based on validation loss')
+    parser.add_argument('--patience', type=int, default=5, help='Patience for early stopping (epochs)')
+    parser.add_argument('--fast-mode', action='store_true', help='Fast mode: 1 epoch, minimal analysis, quick training')
+
     args = parser.parse_args()
+
+    # Fast mode configuration
+    if args.fast_mode:
+        args.max_epochs = 1
+        args.min_epochs = 1
+        args.analysis_freq = max(20, args.analysis_freq)  # Less frequent analysis
+        args.wandb_metrics_freq = max(5, args.wandb_metrics_freq)
+        args.wandb_viz_freq = max(50, args.wandb_viz_freq)
+        args.wandb_paper_freq = max(100, args.wandb_paper_freq)
+        print("🚀 Fast mode enabled: 1 epoch, reduced analysis frequency")
 
     # Set device
     if args.no_cuda:
@@ -503,40 +628,171 @@ if __name__ == '__main__':
         drop_last=False
     )
 
+
+def generate_ablation_config(args, batch_size, device):
+    """Generate comprehensive ablation study configuration"""
+
+    # Base configuration
+    config = {
+        'ablation_mode': args.ablation_mode,
+        'model_name': args.model_name,
+        'batch_size': batch_size,
+        'device': str(device),
+        'timestamp': datetime.now().isoformat()
+    }
+
+    # Mode-specific configurations
+    mode_configs = {
+        'baseline': {
+            'description': 'Baseline DAE-KAN with attention mechanisms',
+            'tags': ['baseline', 'attention', 'complete-model'],
+            'group_name': 'baseline-experiments'
+        },
+        'no-attention': {
+            'description': 'DAE-KAN without attention mechanisms',
+            'tags': ['no-attention', 'ablation', 'attention-removed'],
+            'group_name': 'attention-ablation'
+        },
+        'different-batch-size': {
+            'description': f'DAE-KAN with batch size {batch_size}',
+            'tags': ['batch-size', 'ablation', f'bs-{batch_size}'],
+            'group_name': 'batch-size-ablation'
+        },
+        'different-lr': {
+            'description': 'DAE-KAN with modified learning rate',
+            'tags': ['learning-rate', 'ablation', 'lr-modified'],
+            'group_name': 'learning-rate-ablation'
+        },
+        'different-architecture': {
+            'description': f'DAE-KAN with {args.model_name} architecture',
+            'tags': ['architecture', 'ablation', args.model_name],
+            'group_name': 'architecture-ablation'
+        },
+        'custom': {
+            'description': args.run_description or 'Custom ablation experiment',
+            'tags': ['custom', 'ablation'] + args.ablation_tags,
+            'group_name': args.ablation_group or 'custom-ablation'
+        }
+    }
+
+    mode_config = mode_configs.get(args.ablation_mode, mode_configs['baseline'])
+
+    # Generate experiment name
+    if args.experiment_name:
+        experiment_name = args.experiment_name
+    else:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        experiment_name = f"{args.ablation_mode}_{args.model_name}_{timestamp}"
+
+    # Generate W&B group
+    if args.ablation_group:
+        wandb_group = args.ablation_group
+    else:
+        wandb_group = mode_config['group_name']
+
+    # Generate tags
+    base_tags = ['dae-kan', 'optimized', 'analysis', 'histopathology']
+    mode_tags = mode_config['tags']
+    user_tags = args.ablation_tags
+
+    all_tags = list(set(base_tags + mode_tags + user_tags))
+
+    # Combine everything
+    ablation_config = {
+        **config,
+        **mode_config,
+        'experiment_name': experiment_name,
+        'wandb_group': wandb_group,
+        'tags': all_tags,
+        'run_name': experiment_name,
+        'notes': args.run_description or mode_config['description']
+    }
+
+    return ablation_config
+
+
+if __name__ == "__main__":
     # Test data loading
     x, y = next(iter(train_loader))
     print(f"Data loading successful. Batch shape: {x.shape}")
 
-    # Initialize optimized model
-    model = OptimizedMainModelWithAnalysis(model_name=args.model_name, batch_size=batch_size, analysis_frequency=args.analysis_freq)
+    # Generate ablation configuration
+    ablation_config = generate_ablation_config(args, batch_size, device)
+    print(f"✓ Ablation configuration generated:")
+    print(f"  - Mode: {ablation_config['ablation_mode']}")
+    print(f"  - Experiment Name: {ablation_config['experiment_name']}")
+    print(f"  - W&B Group: {ablation_config['wandb_group']}")
+    print(f"  - Tags: {', '.join(ablation_config['tags'][:5])}...")
+    print(f"  - Description: {ablation_config['notes']}")
+
+    # Initialize optimized model with configurable analysis frequencies
+    model = OptimizedMainModelWithAnalysis(
+        model_name=args.model_name,
+        batch_size=batch_size,
+        analysis_frequency=args.analysis_freq
+    )
+
+    # Pass ablation configuration to model for local storage
+    model.ablation_config = ablation_config
     model = model.to(device)
 
-    # Setup logging
+    # Setup logging with ablation configuration
     wandb_logger = WandbLogger(
         project=args.project_name,
-        group=args.model_name,
-        tags=['optimized', 'analysis', args.model_name],
-        config=args
+        name=ablation_config['run_name'],
+        group=ablation_config['wandb_group'],
+        tags=ablation_config['tags'],
+        notes=ablation_config['notes'],
+        config={
+            **vars(args),
+            **ablation_config,
+            'analysis_config': {
+                'analysis_frequency': args.analysis_freq,
+                'dashboard_frequency': args.dashboard_freq,
+                'wandb_metrics_frequency': args.wandb_metrics_freq,
+                'wandb_visualization_frequency': args.wandb_viz_freq,
+                'wandb_paper_frequency': args.wandb_paper_freq
+            }
+        }
     )
     wandb_logger.watch(model, log='all', log_freq=10)
 
     # Setup callbacks
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
+
+    # Create temporary checkpoint directory (will be moved to analysis directory in on_fit_start)
+    temp_checkpoint_dir = './temp_checkpoints'
     checkpoint_callback = ModelCheckpoint(
         monitor='val/loss',
-        dirpath='./checkpoints_optimized_with_analysis',
+        dirpath=temp_checkpoint_dir,
         filename='best-checkpoint-{epoch:02d}-{val_loss:.3f}',
         save_top_k=3,
         mode='min',
         save_last=True
     )
 
-    
-    # Create optimized trainer
+
+    # Create callbacks for early stopping if enabled
+    callbacks = [checkpoint_callback, lr_monitor]
+
+    if args.early_stopping:
+        from pytorch_lightning.callbacks import EarlyStopping
+        early_stop_callback = EarlyStopping(
+            monitor='val/loss',
+            patience=args.patience,
+            mode='min',
+            min_delta=1e-6,
+            verbose=True
+        )
+        callbacks.append(early_stop_callback)
+        print(f"✓ Early stopping enabled with patience: {args.patience}")
+
+    # Create optimized trainer with configurable epochs
     trainer = pl.Trainer(
-        max_epochs=30,
+        max_epochs=args.max_epochs,
+        min_epochs=args.min_epochs,
         logger=wandb_logger,
-        callbacks=[checkpoint_callback, lr_monitor],
+        callbacks=callbacks,
         accelerator='gpu' if gpu_id is not None else 'cpu',
         devices=[gpu_id] if gpu_id is not None else 1,
         log_every_n_steps=20,
@@ -551,7 +807,34 @@ if __name__ == '__main__':
         # Faster logging
         enable_checkpointing=True,
         enable_progress_bar=True,
+        # Fast mode optimizations
+        fast_dev_run=args.fast_mode,
     )
+
+    print(f"✓ Training configured:")
+    print(f"  - Max epochs: {args.max_epochs}")
+    print(f"  - Min epochs: {args.min_epochs}")
+    print(f"  - Early stopping: {args.early_stopping}")
+    if args.early_stopping:
+        print(f"  - Patience: {args.patience}")
+    print(f"  - Fast mode: {args.fast_mode}")
+
+    # Configure analysis frequencies from command line arguments
+    if hasattr(model, 'auto_analyzer') and model.auto_analyzer:
+        model.auto_analyzer.dashboard_frequency = args.dashboard_freq
+        model.auto_analyzer.wandb_log_frequencies.update({
+            'metrics': args.wandb_metrics_freq,
+            'visualizations': args.wandb_viz_freq,
+            'paper_figures': args.wandb_paper_freq,
+            'individual_components': max(args.wandb_paper_freq * 2, 500)
+        })
+
+        print(f"✓ Analysis frequencies configured:")
+        print(f"  - Basic analysis: every {args.analysis_freq} batches")
+        print(f"  - Dashboard: every {args.dashboard_freq} batches")
+        print(f"  - W&B metrics: every {args.wandb_metrics_freq} batches")
+        print(f"  - W&B visualizations: every {args.wandb_viz_freq} batches")
+        print(f"  - W&B paper figures: every {args.wandb_paper_freq} batches")
 
     # Start training
     print(f"Starting training with batch size {batch_size} on {device}")

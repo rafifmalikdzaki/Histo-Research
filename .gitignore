@@ -11,3 +11,7 @@ wheels/
 data/
 wandb/
 checkpoints_*/
+*.md
+
+auto_analysis/
+
