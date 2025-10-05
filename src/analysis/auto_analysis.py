@@ -1661,7 +1661,7 @@ Training Progress:
         try:
             from sklearn.cluster import KMeans, BisectingKMeans
             from sklearn.mixture import GaussianMixture
-            from sklearn.metrics import silhouette_score
+            from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_harabasz_score
             from sklearn.preprocessing import StandardScaler
 
             if not UMAP_AVAILABLE:
@@ -1702,11 +1702,15 @@ Training Progress:
                 # Fit model and get labels
                 cluster_labels = model.fit_predict(embeddings_scaled)
 
-                # Calculate silhouette score
+                # Calculate scores
                 if len(np.unique(cluster_labels)) > 1:
                     sil_score = silhouette_score(embeddings_scaled, cluster_labels)
+                    db_score = davies_bouldin_score(embeddings_scaled, cluster_labels)
+                    ch_score = calinski_harabasz_score(embeddings_scaled, cluster_labels)
                 else:
-                    sil_score = -1  # Not possible to calculate
+                    sil_score = -1
+                    db_score = -1
+                    ch_score = -1
 
                 # 1. Scatter plot of clusters
                 ax = axes[i, 0]
@@ -1728,14 +1732,20 @@ Training Progress:
                 ax.set_xticks(range(k))
                 ax.grid(True, alpha=0.3)
 
-                # 3. Silhouette score
+                # 3. Clustering scores
                 ax = axes[i, 2]
-                ax.bar(['Silhouette Score'], [sil_score], color='coral', alpha=0.7)
-                ax.set_title(f'{name}: Clustering Quality')
+                scores = {
+                    'Silhouette': sil_score,
+                    'Davies-Bouldin': db_score,
+                    'Calinski-Harabasz': ch_score
+                }
+                bars = ax.bar(scores.keys(), scores.values(), color=['coral', 'skyblue', 'lightgreen'], alpha=0.7)
+                ax.set_title(f'{name}: Clustering Scores')
                 ax.set_ylabel('Score')
-                ax.set_ylim(-1, 1)
-                ax.text(0, sil_score, f'{sil_score:.3f}', ha='center', va='bottom' if sil_score >= 0 else 'top')
-                ax.grid(True, alpha=0.3)
+                ax.grid(True, axis='y', alpha=0.3)
+                for bar in bars:
+                    yval = bar.get_height()
+                    ax.text(bar.get_x() + bar.get_width()/2.0, yval, f'{yval:.3f}', va='bottom' if yval >= 0 else 'top')
 
             plt.tight_layout(rect=[0, 0.03, 1, 0.95])
             viz_path = os.path.join(embeddings_dir, f'{phase}_clustering_analysis.png')
