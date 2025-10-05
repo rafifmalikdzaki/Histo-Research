@@ -1048,9 +1048,18 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
             # Create directory for individual components
             components_dir = self.get_subdir_path('individual_components')
 
-            # Create subdirectory for this batch
-            batch_dir = os.path.join(components_dir, f'latest_{phase}_components')
+            # Create batch-specific directory with timestamp for better organization
+            batch_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            batch_dir = os.path.join(components_dir, f'batch_{batch_idx:06d}_{phase}_{batch_timestamp}')
             os.makedirs(batch_dir, exist_ok=True)
+
+            # Create attention-specific subdirectory
+            attention_dir = os.path.join(batch_dir, 'attention_maps')
+            os.makedirs(attention_dir, exist_ok=True)
+
+            # Create reconstruction subdirectory
+            reconstruction_dir = os.path.join(batch_dir, 'reconstruction_analysis')
+            os.makedirs(reconstruction_dir, exist_ok=True)
             
             # Get data
             input_np = input_tensor[0].detach().cpu().numpy()
@@ -1068,22 +1077,22 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
             ax_orig.imshow(img_norm)
             ax_orig.set_title('Original Image', fontsize=14, fontweight='bold')
             ax_orig.axis('off')
-            orig_path = os.path.join(batch_dir, 'original.png')
+            orig_path = os.path.join(reconstruction_dir, 'original.png')
             plt.savefig(orig_path, dpi=300, bbox_inches='tight', facecolor='white')
             plt.close()
             saved_files['original'] = orig_path
-            
+
             # 2. Reconstructed Image
             fig_recon = plt.figure(figsize=(8, 8))
             ax_recon = fig_recon.add_subplot(111)
             ax_recon.imshow(recon_norm)
             ax_recon.set_title('Reconstructed Image', fontsize=14, fontweight='bold')
             ax_recon.axis('off')
-            recon_path = os.path.join(batch_dir, 'reconstructed.png')
+            recon_path = os.path.join(reconstruction_dir, 'reconstructed.png')
             plt.savefig(recon_path, dpi=300, bbox_inches='tight', facecolor='white')
             plt.close()
             saved_files['reconstructed'] = recon_path
-            
+
             # 3. Error Map
             fig_error = plt.figure(figsize=(8, 8))
             ax_error = fig_error.add_subplot(111)
@@ -1092,7 +1101,7 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
             ax_error.set_title('Reconstruction Error Map', fontsize=14, fontweight='bold')
             ax_error.axis('off')
             plt.colorbar(im_error, ax=ax_error, fraction=0.046)
-            error_path = os.path.join(batch_dir, 'error_map.png')
+            error_path = os.path.join(reconstruction_dir, 'error_map.png')
             plt.savefig(error_path, dpi=300, bbox_inches='tight', facecolor='white')
             plt.close()
             saved_files['error_map'] = error_path
@@ -1117,7 +1126,7 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
                 ax_attn.set_title(f'Attention Map: {bam_key}', fontsize=14, fontweight='bold')
                 ax_attn.axis('off')
                 plt.colorbar(im_attn, ax=ax_attn, fraction=0.046)
-                attn_path = os.path.join(batch_dir, f'attention_map_{bam_key}.png')
+                attn_path = os.path.join(attention_dir, f'attention_map_{bam_key}.png')
                 plt.savefig(attn_path, dpi=300, bbox_inches='tight', facecolor='white')
                 plt.close()
                 saved_files[f'attention_map_{bam_key}'] = attn_path
@@ -1130,7 +1139,7 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
                 ax_hist.set_ylabel('Frequency', fontsize=12)
                 ax_hist.set_title(f'Attention Intensity Distribution: {bam_key}', fontsize=14, fontweight='bold')
                 ax_hist.grid(True, alpha=0.3)
-                hist_path = os.path.join(batch_dir, f'attention_histogram_{bam_key}.png')
+                hist_path = os.path.join(attention_dir, f'attention_histogram_{bam_key}.png')
                 plt.savefig(hist_path, dpi=300, bbox_inches='tight', facecolor='white')
                 plt.close()
                 saved_files[f'attention_histogram_{bam_key}'] = hist_path
@@ -1151,10 +1160,80 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
                 ax_spatial.set_title(f'Spatial Attention Distribution: {bam_key}', fontsize=14, fontweight='bold')
                 ax_spatial.invert_yaxis()  # Match image coordinates
                 plt.colorbar(scatter, ax=ax_spatial, fraction=0.046)
-                spatial_path = os.path.join(batch_dir, f'attention_spatial_{bam_key}.png')
+                spatial_path = os.path.join(attention_dir, f'attention_spatial_{bam_key}.png')
                 plt.savefig(spatial_path, dpi=300, bbox_inches='tight', facecolor='white')
                 plt.close()
                 saved_files[f'attention_spatial_{bam_key}'] = spatial_path
+
+                # 4b. Attention Overlay Visualization
+                fig_overlay = plt.figure(figsize=(12, 6))
+
+                # Original image
+                ax_orig = fig_overlay.add_subplot(1, 3, 1)
+                ax_orig.imshow(img_norm)
+                ax_orig.set_title('Original Image', fontsize=12, fontweight='bold')
+                ax_orig.axis('off')
+
+                # Attention overlay
+                ax_overlay = fig_overlay.add_subplot(1, 3, 2)
+
+                # Resize attention map to match image dimensions if needed
+                if attention_map.shape[:2] != img_norm.shape[:2]:
+                    from skimage.transform import resize
+                    attention_resized = resize(attention_map, (img_norm.shape[0], img_norm.shape[1]),
+                                           preserve_range=True, anti_aliasing=True)
+                else:
+                    attention_resized = attention_map
+
+                # Create overlay
+                ax_overlay.imshow(img_norm)
+                im_overlay = ax_overlay.imshow(attention_resized, cmap='jet', alpha=0.5)
+                ax_overlay.set_title(f'Attention Overlay: {bam_key}', fontsize=12, fontweight='bold')
+                ax_overlay.axis('off')
+                plt.colorbar(im_overlay, ax=ax_overlay, fraction=0.046)
+
+                # Attention only
+                ax_attn_only = fig_overlay.add_subplot(1, 3, 3)
+                im_attn_only = ax_attn_only.imshow(attention_resized, cmap='jet')
+                ax_attn_only.set_title(f'Attention Map: {bam_key}', fontsize=12, fontweight='bold')
+                ax_attn_only.axis('off')
+                plt.colorbar(im_attn_only, ax=ax_attn_only, fraction=0.046)
+
+                plt.suptitle(f'Attention Analysis: {bam_key}', fontsize=14, fontweight='bold')
+                plt.tight_layout()
+
+                overlay_path = os.path.join(attention_dir, f'attention_overlay_{bam_key}.png')
+                plt.savefig(overlay_path, dpi=300, bbox_inches='tight', facecolor='white')
+                plt.close()
+                saved_files[f'attention_overlay_{bam_key}'] = overlay_path
+
+                # 4c. Attention Heatmap with Contours
+                fig_contour = plt.figure(figsize=(10, 8))
+                ax_contour = fig_contour.add_subplot(111)
+
+                # Background: original image
+                ax_contour.imshow(img_norm, alpha=0.7)
+
+                # Attention heatmap with contours
+                attention_resized_float = attention_resized.astype(np.float32)
+                im_contour = ax_contour.imshow(attention_resized_float, cmap='jet', alpha=0.6)
+
+                # Add contour lines
+                contour_levels = np.percentile(attention_resized_float[attention_resized_float > 0],
+                                             [20, 40, 60, 80])
+                if len(contour_levels) > 1:
+                    contours = ax_contour.contour(attention_resized_float, levels=contour_levels,
+                                                 colors='white', linewidths=1.5, alpha=0.8)
+                    ax_contour.clabel(contours, inline=True, fontsize=10)
+
+                ax_contour.set_title(f'Attention Heatmap with Contours: {bam_key}', fontsize=14, fontweight='bold')
+                ax_contour.axis('off')
+                plt.colorbar(im_contour, ax=ax_contour, fraction=0.046)
+
+                contour_path = os.path.join(attention_dir, f'attention_contours_{bam_key}.png')
+                plt.savefig(contour_path, dpi=300, bbox_inches='tight', facecolor='white')
+                plt.close()
+                saved_files[f'attention_contours_{bam_key}'] = contour_path
             
             # 5. Training Progress (Loss and SSIM curves)
             if len(self.batch_metrics) > 1:
@@ -1290,15 +1369,241 @@ Training Progress:
                 plt.close()
                 saved_files['summary_statistics'] = summary_path
             
+            # 9. Create HTML Summary Page
+            html_content = self._create_html_summary(batch_idx, phase, batch_dir, saved_files, img_norm, attention_maps=bam_keys)
+            html_path = os.path.join(batch_dir, 'attention_analysis_summary.html')
+            with open(html_path, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+            saved_files['html_summary'] = html_path
+
             # Log individual components to W&B if enabled and at the right frequency
             if self.should_log_to_wandb('individual_components', batch_idx):
                 for component_name, component_path in saved_files.items():
-                    self.log_image_to_wandb_safe(component_path, f"{phase}/components_{component_name}", step=batch_idx)
+                    if component_name != 'html_summary':  # Don't log HTML to W&B
+                        self.log_image_to_wandb_safe(component_path, f"{phase}/components_{component_name}", step=batch_idx)
 
             return saved_files
         finally:
             # Release lock
             self._release_lock()
+
+    def _create_html_summary(self, batch_idx: int, phase: str, batch_dir: str,
+                           saved_files: Dict, img_norm: np.ndarray, attention_maps: List[str]) -> str:
+        """Create an HTML summary page for easy browsing of attention analysis results"""
+
+        # Calculate relative paths
+        def get_relative_path(file_path):
+            # Get relative path from batch_dir to file
+            if os.path.isabs(file_path):
+                return os.path.relpath(file_path, batch_dir)
+            return file_path
+
+        # Group files by category
+        reconstruction_files = {}
+        attention_files = {}
+        training_files = {}
+
+        for file_name, file_path in saved_files.items():
+            if file_name in ['original', 'reconstructed', 'error_map']:
+                reconstruction_files[file_name] = get_relative_path(file_path)
+            elif 'attention' in file_name:
+                attention_files[file_name] = get_relative_path(file_path)
+            elif file_name in ['training_progress', 'attention_evolution', 'attention_metrics', 'summary_statistics']:
+                training_files[file_name] = get_relative_path(file_path)
+
+        # Generate HTML content
+        html_content = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DAE-KAN Attention Analysis - Batch {batch_idx} ({phase})</title>
+    <style>
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }}
+        .container {{
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }}
+        h1 {{
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 15px;
+        }}
+        h2 {{
+            color: #34495e;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }}
+        .info {{
+            background-color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 30px;
+        }}
+        .image-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }}
+        .image-item {{
+            background-color: #fafafa;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }}
+        .image-item img {{
+            max-width: 100%;
+            height: auto;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }}
+        .image-item h3 {{
+            margin-top: 10px;
+            margin-bottom: 5px;
+            color: #2c3e50;
+            font-size: 16px;
+        }}
+        .attention-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }}
+        .attention-item {{
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+        }}
+        .attention-item img {{
+            max-width: 100%;
+            height: auto;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }}
+        .attention-item h4 {{
+            margin: 5px 0;
+            color: #495057;
+            font-size: 14px;
+            font-weight: bold;
+        }}
+        .file-list {{
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+        }}
+        .file-list ul {{
+            list-style-type: none;
+            padding: 0;
+        }}
+        .file-list li {{
+            padding: 5px 0;
+            border-bottom: 1px solid #e9ecef;
+        }}
+        .file-list li:last-child {{
+            border-bottom: none;
+        }}
+        .file-list a {{
+            color: #007bff;
+            text-decoration: none;
+        }}
+        .file-list a:hover {{
+            text-decoration: underline;
+        }}
+        .timestamp {{
+            color: #6c757d;
+            font-style: italic;
+            text-align: center;
+            margin-top: 30px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>DAE-KAN Attention Analysis</h1>
+
+        <div class="info">
+            <h3>Experiment Information</h3>
+            <p><strong>Batch ID:</strong> {batch_idx:06d}</p>
+            <p><strong>Phase:</strong> {phase.upper()}</p>
+            <p><strong>Run ID:</strong> {self.run_id}</p>
+            <p><strong>Timestamp:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <p><strong>Total Analysis Files:</strong> {len(saved_files)}</p>
+        </div>
+
+        <h2>🖼️ Reconstruction Analysis</h2>
+        <div class="image-grid">
+            {''.join([f'''
+            <div class="image-item">
+                <img src="{path}" alt="{title}" loading="lazy">
+                <h3>{title.replace('_', ' ').title()}</h3>
+            </div>''' for title, path in reconstruction_files.items()])}
+        </div>
+
+        <h2>🎯 Attention Map Analysis</h2>
+        <div class="attention-grid">
+            {''.join([
+                f'''<div class="attention-item">
+                    <h4>{map_type.replace('attention_', '').replace('_', ' ').title()} - {layer}</h4>
+                    <img src="{path}" alt="{map_type}" loading="lazy">
+                </div>'''
+                for layer in attention_maps
+                for map_type, path in [
+                    (f'attention_map_{layer}', saved_files.get(f'attention_map_{layer}')),
+                    (f'attention_overlay_{layer}', saved_files.get(f'attention_overlay_{layer}')),
+                    (f'attention_contours_{layer}', saved_files.get(f'attention_contours_{layer}')),
+                    (f'attention_histogram_{layer}', saved_files.get(f'attention_histogram_{layer}')),
+                    (f'attention_spatial_{layer}', saved_files.get(f'attention_spatial_{layer}'))
+                ]
+                if path is not None
+            ])}
+        </div>
+
+        <h2>📈 Training Progress</h2>
+        <div class="image-grid">
+            {''.join([f'''
+            <div class="image-item">
+                <img src="{path}" alt="{title}" loading="lazy">
+                <h3>{title.replace('_', ' ').title()}</h3>
+            </div>''' for title, path in training_files.items()])}
+        </div>
+
+        <h2>📁 All Generated Files</h2>
+        <div class="file-list">
+            <ul>
+                {''.join([f'<li><a href="{get_relative_path(path)}" target="_blank">{file_name}</a></li>'
+                         for file_name, path in saved_files.items()])}
+            </ul>
+        </div>
+
+        <div class="timestamp">
+            <p>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <p><em>Open this HTML file in a web browser for interactive browsing of all attention analysis results</em></p>
+        </div>
+    </div>
+</body>
+</html>
+        """
+
+        return html_content
 
     def _estimate_epoch(self, batch_idx):
         """Estimate current epoch from batch index"""

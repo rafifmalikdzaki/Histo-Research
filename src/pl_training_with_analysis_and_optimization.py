@@ -30,11 +30,15 @@ from analysis.auto_analysis import AutomaticAnalyzer
 class OptimizedMainModelWithAnalysis(pl.LightningModule):
     """Optimized Lightning module with better memory management and GPU utilization"""
 
-    def __init__(self, model_name: str = "dae_kan_attention", batch_size=8, analysis_frequency=100):
+    def __init__(self, model_name: str = "dae_kan_attention", batch_size=8, analysis_frequency=100,
+                 attention_components_frequency=400, max_embeddings_to_store=1000, embeddings_per_epoch=500):
         super(OptimizedMainModelWithAnalysis, self).__init__()
         self.model = get_model(model_name)()
         self.batch_size = batch_size
         self.analysis_frequency = analysis_frequency  # Run full analysis every N batches
+        self.attention_components_frequency = attention_components_frequency  # Save detailed components every N batches
+        self.max_embeddings_to_store = max_embeddings_to_store  # Limit embedding storage
+        self.embeddings_per_epoch = embeddings_per_epoch  # Number of embeddings to collect per epoch
 
         # Initialize automatic analyzer
         self.auto_analyzer = None
@@ -42,6 +46,20 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
         # Store basic metrics
         self.batch_losses = []
         self.reconstruction_metrics = []
+
+        # Initialize embedding storage
+        self.embeddings_storage = {
+            'train': {'embeddings': [], 'metadata': [], 'batch_indices': []},
+            'val': {'embeddings': [], 'metadata': [], 'batch_indices': []}
+        }
+        self.max_embeddings_to_store = 1000  # Limit memory usage
+
+        # Epoch-based embedding collection
+        self.epoch_embeddings_collection = {
+            'train': {'embeddings': [], 'metadata': [], 'epoch_indices': []},
+            'val': {'embeddings': [], 'metadata': [], 'epoch_indices': []}
+        }
+        self.current_epoch = 0
 
         # Training timing and performance tracking
         self.training_times = []
@@ -136,6 +154,10 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
         encoded, decoded, z = self.forward(x)
         if torch.cuda.is_available():
             torch.cuda.synchronize()
+
+        # Collect embeddings for epoch-end analysis (sample from batches)
+        self._collect_epoch_embeddings(batch_idx, x, z, "train")
+
         inference_time = (time.perf_counter() - inference_start_time) * 1000  # ms
 
         # Compute loss
@@ -209,6 +231,20 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                             f'train/batch_visualization_{batch_idx}': wandb.Image(viz_path)
                         })
 
+                # Save detailed individual components every N batches (less frequent)
+                if batch_idx % self.attention_components_frequency == 0 and batch_idx > 0:
+                    component_files = self.auto_analyzer.save_individual_components(
+                        batch_idx=batch_idx,
+                        input_tensor=x,
+                        output_tensor=decoded,
+                        phase="train"
+                    )
+
+                    # Log component paths to console for debugging
+                    if component_files:
+                        print(f"✓ Saved {len(component_files)} individual attention components for batch {batch_idx}")
+                        print(f"  Files: {list(component_files.keys())[:3]}...")  # Show first 3 file types
+
                     # Create comprehensive paper dashboard
                     if batch_idx % self.auto_analyzer.dashboard_frequency == 0:
                         try:
@@ -263,6 +299,11 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
         encoded, decoded, z = self.forward(x)
         if torch.cuda.is_available():
             torch.cuda.synchronize()
+
+        # Collect embeddings for epoch-end analysis (limited validation collection)
+        if batch_idx < 20:  # Only collect from first 20 validation batches
+            self._collect_epoch_embeddings(batch_idx, x, z, "val")
+
         inference_time = (time.perf_counter() - inference_start_time) * 1000  # ms
 
         mse_loss = nn.functional.mse_loss(x, decoded)
@@ -314,6 +355,20 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                     self.logger.experiment.log({
                         f'val/batch_visualization_{batch_idx}': wandb.Image(viz_path)
                     })
+
+                # Save individual components for validation (first 3 batches only)
+                if batch_idx < 3:
+                    component_files = self.auto_analyzer.save_individual_components(
+                        batch_idx=batch_idx,
+                        input_tensor=x,
+                        output_tensor=decoded,
+                        phase="val"
+                    )
+
+                    # Log component paths to console for debugging
+                    if component_files:
+                        print(f"✓ Saved {len(component_files)} validation attention components for batch {batch_idx}")
+                        print(f"  Files: {list(component_files.keys())[:3]}...")  # Show first 3 file types
 
                 # Create paper dashboard for validation (less frequent)
                 if batch_idx % 2 == 0:  # Every 2nd validation batch
@@ -388,6 +443,411 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
             }
         }
 
+    def _store_embeddings(self, batch_idx: int, input_tensor: torch.Tensor,
+                          z_embeddings: torch.Tensor, phase: str):
+        """Store embeddings and metadata for later analysis"""
+
+        # Convert to numpy and move to CPU
+        z_np = z_embeddings.detach().cpu().numpy()
+        input_np = input_tensor.detach().cpu().numpy()
+
+        # Store each sample in the batch
+        for i in range(z_np.shape[0]):
+            # Flatten embedding for easier analysis
+            embedding_flat = z_np[i].flatten()
+
+            # Create metadata
+            metadata = {
+                'batch_idx': batch_idx,
+                'sample_idx': i,
+                'phase': phase,
+                'embedding_shape': z_np[i].shape,
+                'timestamp': time.time(),
+                'input_shape': input_np[i].shape,
+                'input_mean': float(input_np[i].mean()),
+                'input_std': float(input_np[i].std())
+            }
+
+            # Add to storage (with memory limit)
+            if len(self.embeddings_storage[phase]['embeddings']) < self.max_embeddings_to_store:
+                self.embeddings_storage[phase]['embeddings'].append(embedding_flat)
+                self.embeddings_storage[phase]['metadata'].append(metadata)
+                self.embeddings_storage[phase]['batch_indices'].append(batch_idx)
+            elif len(self.embeddings_storage[phase]['embeddings']) % 100 == 0:
+                # Periodically save embeddings to disk to free memory
+                self._save_embeddings_to_disk(phase)
+
+    def _save_embeddings_to_disk(self, phase: str):
+        """Save embeddings to disk to free memory"""
+        if not self.embeddings_storage[phase]['embeddings']:
+            return
+
+        try:
+            import pandas as pd
+
+            # Create embeddings directory
+            if hasattr(self, 'auto_analyzer') and self.auto_analyzer:
+                embeddings_dir = os.path.join(self.auto_analyzer.save_dir, 'embeddings')
+            else:
+                embeddings_dir = 'embeddings'
+
+            os.makedirs(embeddings_dir, exist_ok=True)
+
+            # Convert to arrays
+            embeddings_array = np.array(self.embeddings_storage[phase]['embeddings'])
+            metadata_list = self.embeddings_storage[phase]['metadata']
+
+            # Save embeddings
+            embeddings_file = os.path.join(embeddings_dir, f'{phase}_embeddings.npy')
+            np.save(embeddings_file, embeddings_array)
+
+            # Save metadata
+            metadata_df = pd.DataFrame(metadata_list)
+            metadata_file = os.path.join(embeddings_dir, f'{phase}_metadata.csv')
+            metadata_df.to_csv(metadata_file, index=False)
+
+            print(f"✓ Saved {len(embeddings_array)} {phase} embeddings to {embeddings_dir}")
+
+            # Clear storage to free memory
+            self.embeddings_storage[phase] = {'embeddings': [], 'metadata': [], 'batch_indices': []}
+
+        except Exception as e:
+            print(f"⚠ Failed to save {phase} embeddings to disk: {e}")
+
+    def _create_epoch_evolution_analysis(self):
+        """Create analysis of how embeddings evolve across epochs"""
+
+        if not hasattr(self, 'auto_analyzer') or not self.auto_analyzer:
+            return
+
+        try:
+            import glob
+            # Create embeddings directory
+            embeddings_dir = os.path.join(self.auto_analyzer.save_dir, 'embeddings')
+            os.makedirs(embeddings_dir, exist_ok=True)
+
+            # Find all epoch embedding files
+            train_epoch_files = sorted(glob.glob(os.path.join(embeddings_dir, 'train_embeddings_epoch_*.npy')))
+            val_epoch_files = sorted(glob.glob(os.path.join(embeddings_dir, 'val_embeddings_epoch_*.npy')))
+
+            if not train_epoch_files:
+                print("⚠ No epoch embedding files found for evolution analysis")
+                return
+
+            # Load all epoch embeddings
+            train_embeddings_by_epoch = []
+            val_embeddings_by_epoch = []
+
+            for file_path in train_epoch_files:
+                epoch_num = int(os.path.basename(file_path).split('_')[-1].split('.')[0])
+                embeddings = np.load(file_path)
+                metadata = pd.read_csv(file_path.replace('.npy', '_metadata.csv'))
+                train_embeddings_by_epoch.append({
+                    'epoch': epoch_num,
+                    'embeddings': embeddings,
+                    'metadata': metadata,
+                    'file_path': file_path
+                })
+
+            for file_path in val_epoch_files:
+                epoch_num = int(os.path.basename(file_path).split('_')[-1].split('.')[0])
+                embeddings = np.load(file_path)
+                metadata = pd.read_csv(file_path.replace('.npy', '_metadata.csv'))
+                val_embeddings_by_epoch.append({
+                    'epoch': epoch_num,
+                    'embeddings': embeddings,
+                    'metadata': metadata,
+                    'file_path': file_path
+                })
+
+            print(f"Found {len(train_embeddings_by_epoch)} training epochs and {len(val_embeddings_by_epoch)} validation epochs")
+
+            # Create epoch evolution visualizations
+            self._create_epoch_evolution_visualizations(train_embeddings_by_epoch, val_embeddings_by_epoch, embeddings_dir)
+
+            # Create epoch evolution HTML report
+            self._create_epoch_evolution_html_report(train_embeddings_by_epoch, val_embeddings_by_epoch, embeddings_dir)
+
+        except Exception as e:
+            print(f"⚠ Failed to create epoch evolution analysis: {e}")
+
+    def _create_epoch_evolution_visualizations(self, train_epochs: list, val_epochs: list, embeddings_dir: str):
+        """Create visualizations showing how embeddings evolve across epochs"""
+
+        try:
+            import matplotlib.pyplot as plt
+
+            # Create evolution plots
+            fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+            fig.suptitle('Embedding Evolution Across Training Epochs', fontsize=16, fontweight='bold')
+
+            # 1. Embedding statistics evolution (training)
+            ax1 = axes[0, 0]
+            epochs = [epoch['epoch'] for epoch in train_epochs]
+            means = [np.mean(epoch['embeddings']) for epoch in train_epochs]
+            stds = [np.std(epoch['embeddings']) for epoch in train_epochs]
+            norms = [np.mean(np.linalg.norm(epoch['embeddings'], axis=1)) for epoch in train_epochs]
+
+            ax1_twin = ax1.twinx()
+            line1 = ax1.plot(epochs, means, 'b-o', label='Mean', linewidth=2, markersize=6)
+            line2 = ax1_twin.plot(epochs, stds, 'r-s', label='Std Dev', linewidth=2, markersize=6)
+            ax1.set_xlabel('Epoch')
+            ax1.set_ylabel('Mean Value', color='b')
+            ax1_twin.set_ylabel('Standard Deviation', color='r')
+            ax1.tick_params(axis='y', labelcolor='b')
+            ax1_twin.tick_params(axis='y', labelcolor='r')
+            ax1.set_title('Training Embedding Statistics Evolution')
+            ax1.grid(True, alpha=0.3)
+            ax1.legend(loc='upper left')
+
+            # 2. Embedding norms evolution (training)
+            ax2 = axes[0, 1]
+            ax2.plot(epochs, norms, 'g-^', linewidth=2, markersize=6)
+            ax2.set_xlabel('Epoch')
+            ax2.set_ylabel('Mean L2 Norm')
+            ax2.set_title('Training Embedding Norm Evolution')
+            ax2.grid(True, alpha=0.3)
+
+            # 3. Embedding sparsity evolution (training)
+            ax3 = axes[0, 2]
+            sparsities = [np.mean(epoch['embeddings'] == 0) for epoch in train_epochs]
+            ax3.plot(epochs, sparsities, 'm-d', linewidth=2, markersize=6)
+            ax3.set_xlabel('Epoch')
+            ax3.set_ylabel('Sparsity (fraction of zeros)')
+            ax3.set_title('Training Embedding Sparsity Evolution')
+            ax3.grid(True, alpha=0.3)
+
+            # 4-6. Validation evolution plots (if available)
+            if val_epochs:
+                val_epochs_list = [epoch['epoch'] for epoch in val_epochs]
+                val_means = [np.mean(epoch['embeddings']) for epoch in val_epochs]
+                val_stds = [np.std(epoch['embeddings']) for epoch in val_epochs]
+                val_norms = [np.mean(np.linalg.norm(epoch['embeddings'], axis=1)) for epoch in val_epochs]
+                val_sparsities = [np.mean(epoch['embeddings'] == 0) for epoch in val_epochs]
+
+                # Validation statistics
+                ax4 = axes[1, 0]
+                ax4_twin = ax4.twinx()
+                ax4.plot(val_epochs_list, val_means, 'b-o', label='Mean', linewidth=2, markersize=6)
+                ax4_twin.plot(val_epochs_list, val_stds, 'r-s', label='Std Dev', linewidth=2, markersize=6)
+                ax4.set_xlabel('Epoch')
+                ax4.set_ylabel('Mean Value', color='b')
+                ax4_twin.set_ylabel('Standard Deviation', color='r')
+                ax4.tick_params(axis='y', labelcolor='b')
+                ax4_twin.tick_params(axis='y', labelcolor='r')
+                ax4.set_title('Validation Embedding Statistics Evolution')
+                ax4.grid(True, alpha=0.3)
+                ax4.legend(loc='upper left')
+
+                # Validation norms
+                ax5 = axes[1, 1]
+                ax5.plot(val_epochs_list, val_norms, 'g-^', linewidth=2, markersize=6)
+                ax5.set_xlabel('Epoch')
+                ax5.set_ylabel('Mean L2 Norm')
+                ax5.set_title('Validation Embedding Norm Evolution')
+                ax5.grid(True, alpha=0.3)
+
+                # Validation sparsity
+                ax6 = axes[1, 2]
+                ax6.plot(val_epochs_list, val_sparsities, 'm-d', linewidth=2, markersize=6)
+                ax6.set_xlabel('Epoch')
+                ax6.set_ylabel('Sparsity (fraction of zeros)')
+                ax6.set_title('Validation Embedding Sparsity Evolution')
+                ax6.grid(True, alpha=0.3)
+            else:
+                # Hide validation plots if not available
+                for ax in axes[1, :]:
+                    ax.text(0.5, 0.5, 'No validation\nembeddings\navailable',
+                           ha='center', va='center', transform=ax.transAxes)
+                    ax.set_title('Validation Data (Not Available)')
+
+            plt.tight_layout()
+            evolution_path = os.path.join(embeddings_dir, 'embedding_evolution_analysis.png')
+            plt.savefig(evolution_path, dpi=300, bbox_inches='tight', facecolor='white')
+            plt.close()
+
+            print(f"✅ Epoch evolution visualizations saved to {embeddings_dir}")
+
+        except ImportError:
+            print("⚠ Matplotlib not available for evolution visualizations")
+        except Exception as e:
+            print(f"⚠ Evolution visualization failed: {e}")
+
+    def _create_epoch_evolution_html_report(self, train_epochs: list, val_epochs: list, embeddings_dir: str):
+        """Create HTML report for epoch evolution analysis"""
+
+        html_content = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Embedding Evolution Analysis</title>
+    <style>
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }}
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }}
+        h1 {{
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 15px;
+        }}
+        .stats {{
+            background-color: #ecf0f1;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }}
+        .stat-item {{
+            text-align: center;
+            padding: 15px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }}
+        .stat-number {{
+            font-size: 2em;
+            font-weight: bold;
+            color: #3498db;
+        }}
+        .stat-label {{
+            color: #7f8c8d;
+            margin-top: 5px;
+        }}
+        .section {{
+            margin: 30px 0;
+        }}
+        .section h2 {{
+            color: #34495e;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }}
+        .epoch-list {{
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+        }}
+        .epoch-item {{
+            padding: 10px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+        .epoch-item:last-child {{
+            border-bottom: none;
+        }}
+        .file-link {{
+            color: #007bff;
+            text-decoration: none;
+            padding: 5px 10px;
+            background-color: #e9ecef;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }}
+        .file-link:hover {{
+            background-color: #dee2e6;
+            text-decoration: none;
+        }}
+        .image-container {{
+            text-align: center;
+            margin: 20px 0;
+        }}
+        .image-container img {{
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Embedding Evolution Analysis</h1>
+
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-number">{len(train_epochs)}</div>
+                <div class="stat-label">Training Epochs Analyzed</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{len(val_epochs) if val_epochs else 0}</div>
+                <div class="stat-label">Validation Epochs Analyzed</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{train_epochs[0]['embeddings'].shape[0] if train_epochs else 0}</div>
+                <div class="stat-label">Embeddings per Epoch</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{train_epochs[0]['embeddings'].shape[1] if train_epochs else 0}</div>
+                <div class="stat-label">Embedding Dimensions</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📊 Evolution Visualizations</h2>
+            <div class="image-container">
+                <img src="embedding_evolution_analysis.png" alt="Embedding Evolution Analysis" loading="lazy">
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📁 Training Epoch Files</h2>
+            <div class="epoch-list">
+                {''.join([f'''
+                <div class="epoch-item">
+                    <span>Epoch {epoch['epoch']}</span>
+                    <a href="{os.path.basename(epoch['file_path'])}" class="file-link" download>Embeddings</a>
+                    <a href="{os.path.basename(epoch['file_path']).replace('.npy', '_metadata.csv')}" class="file-link" download>Metadata</a>
+                </div>''' for epoch in train_epochs])}
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📁 Validation Epoch Files</h2>
+            <div class="epoch-list">
+                {''.join([f'''
+                <div class="epoch-item">
+                    <span>Epoch {epoch['epoch']}</span>
+                    <a href="{os.path.basename(epoch['file_path'])}" class="file-link" download>Embeddings</a>
+                    <a href="{os.path.basename(epoch['file_path']).replace('.npy', '_metadata.csv')}" class="file-link" download>Metadata</a>
+                </div>''' for epoch in val_epochs]) if val_epochs else '<p>No validation epoch files available</p>'}
+            </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 30px; color: #6c757d; font-style: italic;">
+            <p>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <p><em>This report shows how DAE-KAN embeddings evolve across training epochs</em></p>
+        </div>
+    </div>
+</body>
+</html>
+        """
+
+        html_path = os.path.join(embeddings_dir, 'embedding_evolution_report.html')
+        with open(html_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+
+        print(f"✅ Epoch evolution HTML report saved to {html_path}")
+
     def on_train_epoch_start(self):
         """Enable optimization at the start of each epoch"""
         # Enable mixed precision training
@@ -398,6 +858,221 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
         # Periodic memory cleanup (less frequent than before)
         if batch_idx % 50 == 0:
             torch.cuda.empty_cache()
+
+    def _finalize_embedding_analysis(self):
+        """Save remaining embeddings and create comprehensive embedding analysis"""
+
+        # Save any remaining embeddings
+        for phase in ['train', 'val']:
+            self._save_embeddings_to_disk(phase)
+
+        # Create embedding analysis and visualizations
+        self._create_embedding_analysis()
+
+        # Create epoch evolution analysis
+        self._create_epoch_evolution_analysis()
+
+    def _create_embedding_analysis(self):
+        """Create comprehensive embedding analysis with visualizations"""
+
+        if not hasattr(self, 'auto_analyzer') or not self.auto_analyzer:
+            return
+
+        try:
+            # Create embeddings directory
+            embeddings_dir = os.path.join(self.auto_analyzer.save_dir, 'embeddings')
+            os.makedirs(embeddings_dir, exist_ok=True)
+
+            # Load embeddings if they exist
+            train_embeddings_file = os.path.join(embeddings_dir, 'train_embeddings.npy')
+            val_embeddings_file = os.path.join(embeddings_dir, 'val_embeddings.npy')
+
+            if os.path.exists(train_embeddings_file):
+                train_embeddings = np.load(train_embeddings_file)
+                train_metadata = pd.read_csv(os.path.join(embeddings_dir, 'train_metadata.csv'))
+
+                # Create comprehensive analysis
+                self._create_embedding_visualizations(train_embeddings, train_metadata, 'train', embeddings_dir)
+
+            if os.path.exists(val_embeddings_file):
+                val_embeddings = np.load(val_embeddings_file)
+                val_metadata = pd.read_csv(os.path.join(embeddings_dir, 'val_metadata.csv'))
+
+                # Create comprehensive analysis
+                self._create_embedding_visualizations(val_embeddings, val_metadata, 'val', embeddings_dir)
+
+        except Exception as e:
+            print(f"⚠ Failed to create embedding analysis: {e}")
+
+    def _collect_epoch_embeddings(self, batch_idx: int, input_tensor: torch.Tensor,
+                                 z_embeddings: torch.Tensor, phase: str):
+        """Collect embeddings during epoch for end-of-epoch analysis"""
+
+        # Convert to numpy and move to CPU
+        z_np = z_embeddings.detach().cpu().numpy()
+        input_np = input_tensor.detach().cpu().numpy()
+
+        # Calculate current epoch
+        current_epoch = self.current_epoch
+
+        # Sample embeddings to avoid collecting too many
+        max_per_batch = max(1, self.embeddings_per_epoch // 100)  # Rough estimate of batches per epoch
+
+        for i in range(min(z_np.shape[0], max_per_batch)):
+            # Flatten embedding for easier analysis
+            embedding_flat = z_np[i].flatten()
+
+            # Create epoch-specific metadata
+            metadata = {
+                'epoch': current_epoch,
+                'batch_idx': batch_idx,
+                'sample_idx': i,
+                'phase': phase,
+                'embedding_shape': z_np[i].shape,
+                'timestamp': time.time(),
+                'input_shape': input_np[i].shape,
+                'input_mean': float(input_np[i].mean()),
+                'input_std': float(input_np[i].std())
+            }
+
+            # Add to epoch collection
+            if len(self.epoch_embeddings_collection[phase]['embeddings']) < self.embeddings_per_epoch:
+                self.epoch_embeddings_collection[phase]['embeddings'].append(embedding_flat)
+                self.epoch_embeddings_collection[phase]['metadata'].append(metadata)
+                self.epoch_embeddings_collection[phase]['epoch_indices'].append(current_epoch)
+
+    def on_train_epoch_end(self):
+        """Called at the end of each training epoch - save collected embeddings"""
+
+        self.current_epoch += 1  # Increment epoch counter
+
+        # Save embeddings collected during this epoch
+        for phase in ['train', 'val']:
+            if self.epoch_embeddings_collection[phase]['embeddings']:
+                self._save_epoch_embeddings(phase)
+                print(f"✅ Epoch {self.current_epoch-1}: Saved {len(self.epoch_embeddings_collection[phase]['embeddings'])} {phase} embeddings")
+
+        # Clear epoch collection for next epoch
+        for phase in ['train', 'val']:
+            self.epoch_embeddings_collection[phase] = {
+                'embeddings': [], 'metadata': [], 'epoch_indices': []
+            }
+
+    def _save_epoch_embeddings(self, phase: str):
+        """Save embeddings collected during current epoch"""
+
+        if not self.epoch_embeddings_collection[phase]['embeddings']:
+            return
+
+        try:
+            import pandas as pd
+
+            # Create embeddings directory
+            if hasattr(self, 'auto_analyzer') and self.auto_analyzer:
+                embeddings_dir = os.path.join(self.auto_analyzer.save_dir, 'embeddings')
+            else:
+                embeddings_dir = 'embeddings'
+
+            os.makedirs(embeddings_dir, exist_ok=True)
+
+            # Convert to arrays
+            embeddings_array = np.array(self.epoch_embeddings_collection[phase]['embeddings'])
+            metadata_list = self.epoch_embeddings_collection[phase]['metadata']
+
+            # Save epoch-specific embeddings
+            epoch_num = self.current_epoch - 1
+            embeddings_file = os.path.join(embeddings_dir, f'{phase}_embeddings_epoch_{epoch_num:03d}.npy')
+            np.save(embeddings_file, embeddings_array)
+
+            # Save metadata
+            metadata_df = pd.DataFrame(metadata_list)
+            metadata_file = os.path.join(embeddings_dir, f'{phase}_metadata_epoch_{epoch_num:03d}.csv')
+            metadata_df.to_csv(metadata_file, index=False)
+
+            # Also append to overall storage for analysis
+            if len(self.embeddings_storage[phase]['embeddings']) < self.max_embeddings_to_store:
+                self.embeddings_storage[phase]['embeddings'].extend(embeddings_array.tolist())
+                self.embeddings_storage[phase]['metadata'].extend(metadata_list)
+                self.embeddings_storage[phase]['batch_indices'].extend([epoch_num] * len(embeddings_array))
+
+        except Exception as e:
+            print(f"⚠ Failed to save {phase} embeddings for epoch {epoch_num}: {e}")
+
+    def _create_embedding_visualizations(self, embeddings: np.ndarray, metadata: pd.DataFrame,
+                                       phase: str, embeddings_dir: str):
+        """Create various embedding visualizations and analysis"""
+
+        if len(embeddings) == 0:
+            return
+
+        print(f"Creating embedding visualizations for {len(embeddings)} {phase} embeddings...")
+
+        # 1. Basic embedding statistics
+        self._create_embedding_statistics(embeddings, metadata, phase, embeddings_dir)
+
+        # 2. Dimensionality reduction (UMAP/t-SNE)
+        self._create_dimensionality_reduction_plots(embeddings, metadata, phase, embeddings_dir)
+
+        # 3. Embedding clustering analysis
+        self._create_clustering_analysis(embeddings, metadata, phase, embeddings_dir)
+
+        # 4. Embedding quality metrics
+        self._create_embedding_quality_analysis(embeddings, metadata, phase, embeddings_dir)
+
+        # 5. Create HTML summary
+        self._create_embedding_html_summary(embeddings, metadata, phase, embeddings_dir)
+
+    def _create_embedding_statistics(self, embeddings: np.ndarray, metadata: pd.DataFrame,
+                                   phase: str, embeddings_dir: str):
+        """Create basic embedding statistics visualization"""
+
+        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+        fig.suptitle(f'Embedding Statistics - {phase.upper()} Set', fontsize=16, fontweight='bold')
+
+        # 1. Embedding dimension distribution
+        ax1 = axes[0, 0]
+        embedding_means = np.mean(embeddings, axis=1)
+        ax1.hist(embedding_means, bins=50, alpha=0.7, color='steelblue', edgecolor='black')
+        ax1.set_title('Distribution of Embedding Means')
+        ax1.set_xlabel('Mean Value')
+        ax1.set_ylabel('Frequency')
+        ax1.grid(True, alpha=0.3)
+
+        # 2. Embedding variance distribution
+        ax2 = axes[0, 1]
+        embedding_vars = np.var(embeddings, axis=1)
+        ax2.hist(embedding_vars, bins=50, alpha=0.7, color='coral', edgecolor='black')
+        ax2.set_title('Distribution of Embedding Variances')
+        ax2.set_xlabel('Variance')
+        ax2.set_ylabel('Frequency')
+        ax2.grid(True, alpha=0.3)
+
+        # 3. Embedding sparsity
+        ax3 = axes[1, 0]
+        sparsity = np.mean(embeddings == 0, axis=1)
+        ax3.hist(sparsity, bins=50, alpha=0.7, color='mediumseagreen', edgecolor='black')
+        ax3.set_title('Embedding Sparsity Distribution')
+        ax3.set_xlabel('Sparsity (fraction of zeros)')
+        ax3.set_ylabel('Frequency')
+        ax3.grid(True, alpha=0.3)
+
+        # 4. Batch progression
+        ax4 = axes[1, 1]
+        batch_means = []
+        for batch_idx in sorted(metadata['batch_idx'].unique()):
+            batch_mask = metadata['batch_idx'] == batch_idx
+            batch_means.append(np.mean(embeddings[batch_mask]))
+
+        ax4.plot(batch_means, 'o-', color='purple', linewidth=2, markersize=6)
+        ax4.set_title('Embedding Means vs Batch Progress')
+        ax4.set_xlabel('Batch Index')
+        ax4.set_ylabel('Mean Embedding Value')
+        ax4.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        stats_path = os.path.join(embeddings_dir, f'{phase}_embedding_statistics.png')
+        plt.savefig(stats_path, dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()
 
     def on_train_end(self):
         # Final cleanup and summary
@@ -412,7 +1087,11 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                 # Save all data
                 self.auto_analyzer.save_metrics("final_training_metrics.json")
 
+                # Save remaining embeddings and create analysis
+                self._finalize_embedding_analysis()
+
                 print("✓ Final analysis completed")
+                print(f"✓ Embedding analysis saved to {self.auto_analyzer.save_dir}/embeddings/")
 
             except Exception as e:
                 print(f"⚠ Final analysis failed: {e}")
@@ -540,6 +1219,10 @@ if __name__ == '__main__':
     parser.add_argument('--wandb-metrics-freq', type=int, default=10, help='Log detailed metrics to W&B every N batches')
     parser.add_argument('--wandb-viz-freq', type=int, default=100, help='Log visualizations to W&B every N batches')
     parser.add_argument('--wandb-paper-freq', type=int, default=200, help='Log paper figures to W&B every N batches')
+    parser.add_argument('--attention-components-freq', type=int, default=400, help='Save detailed attention components every N batches')
+    parser.add_argument('--embeddings-per-epoch', type=int, default=500, help='Number of embeddings to collect and save at each epoch end')
+    parser.add_argument('--max-embeddings-to-store', type=int, default=1000, help='Maximum number of embeddings to store in memory for final analysis')
+    parser.add_argument('--save-epoch-embeddings', action='store_true', default=True, help='Save embeddings at the end of each epoch')
     parser.add_argument('--project-name', type=str, default='histopath-kan-optimized-analysis', help='W&B project name')
     parser.add_argument('--model-name', type=str, default="dae_kan_attention", help='Name of the model to use')
 
@@ -729,7 +1412,10 @@ if __name__ == "__main__":
     model = OptimizedMainModelWithAnalysis(
         model_name=args.model_name,
         batch_size=batch_size,
-        analysis_frequency=args.analysis_freq
+        analysis_frequency=args.analysis_freq,
+        attention_components_frequency=args.attention_components_freq,
+        max_embeddings_to_store=args.max_embeddings_to_store,
+        embeddings_per_epoch=args.embeddings_per_epoch
     )
 
     # Pass ablation configuration to model for local storage
