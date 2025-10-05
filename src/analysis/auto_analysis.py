@@ -277,7 +277,6 @@ class AutomaticAnalyzer:
         }
 
         # Distribution metrics
-        metrics['attention_entropy'] = self._compute_entropy(attention_flat)
         metrics['attention_kurtosis'] = float(stats.kurtosis(attention_flat))
         metrics['attention_skewness'] = float(stats.skew(attention_flat))
 
@@ -296,10 +295,7 @@ class AutomaticAnalyzer:
 
         return metrics
 
-    def _compute_entropy(self, attention_flat: np.ndarray) -> float:
-        """Compute entropy of attention distribution"""
-        attention_prob = attention_flat / (np.sum(attention_flat) + 1e-8)
-        return float(-np.sum(attention_prob * np.log2(attention_prob + 1e-8)))
+
 
     def _compute_concentration(self, attention_flat: np.ndarray, top_percent: float) -> float:
         """Compute attention concentration in top-k regions"""
@@ -389,7 +385,7 @@ class AutomaticAnalyzer:
 
     def analyze_batch(self, batch_idx: int, input_tensor: torch.Tensor,
                      output_tensor: torch.Tensor, loss: float,
-                     phase: str = "train") -> Dict:
+                     phase: str = "train", global_step: int = None) -> Dict:
         """Analyze a single batch and return metrics"""
 
         # Clear attention data for this batch
@@ -442,7 +438,8 @@ class AutomaticAnalyzer:
                 if 'attention_' in key and isinstance(value, (int, float)):
                     wandb_metrics[key] = value
 
-            self.log_to_wandb_safe(wandb_metrics, f"{phase}/analysis", step=batch_idx)
+            log_step = global_step if global_step is not None else batch_idx
+            self.log_to_wandb_safe(wandb_metrics, f"{phase}/analysis", step=log_step)
 
         return metrics
 
@@ -471,7 +468,7 @@ class AutomaticAnalyzer:
         return float(torch.mean(ssim).item())
 
     def create_batch_visualization(self, batch_idx: int, input_tensor: torch.Tensor,
-                                 output_tensor: torch.Tensor, phase: str = "train") -> str:
+                                 output_tensor: torch.Tensor, phase: str = "train", global_step: int = None) -> str:
         """Create visualization for current batch"""
 
         fig = plt.figure(figsize=(20, 12))
@@ -569,17 +566,12 @@ class AutomaticAnalyzer:
         # Attention evolution
         ax7 = fig.add_subplot(gs[2, 0:2])
         if len(self.batch_metrics) > 10:
-            entropy_values = []
             concentration_values = []
 
             for metrics in self.batch_metrics[-50:]:  # Last 50 batches
-                if 'attention_bam_384_attention_entropy' in metrics:
-                    entropy_values.append(metrics['attention_bam_384_attention_entropy'])
                 if 'attention_bam_384_attention_concentration_10' in metrics:
                     concentration_values.append(metrics['attention_bam_384_attention_concentration_10'])
 
-            if entropy_values:
-                ax7.plot(range(len(entropy_values)), entropy_values, 'g-', label='Entropy', alpha=0.7)
             if concentration_values:
                 ax7.plot(range(len(concentration_values)), concentration_values, 'r-', label='Concentration', alpha=0.7)
 
@@ -604,7 +596,6 @@ class AutomaticAnalyzer:
             - SSIM: {latest_metrics['ssim']:.4f}
 
             Attention Quality:
-            - Entropy: {latest_metrics.get('attention_bam_384_attention_entropy', 'N/A')}
             - Concentration: {latest_metrics.get('attention_bam_384_attention_concentration_10', 'N/A')}
             - Sparsity: {latest_metrics.get('attention_bam_384_attention_sparsity', 'N/A')}
             - Num Peaks: {latest_metrics.get('attention_bam_384_num_attention_peaks', 'N/A')}
@@ -626,12 +617,13 @@ class AutomaticAnalyzer:
 
         # Log to W&B if enabled and at the right frequency
         if self.should_log_to_wandb('visualizations', batch_idx):
-            self.log_image_to_wandb_safe(save_path, f"{phase}/batch_visualization", step=batch_idx)
+            log_step = global_step if global_step is not None else batch_idx
+            self.log_image_to_wandb_safe(save_path, f"{phase}/batch_visualization", step=log_step)
 
         return save_path
 
     def create_comprehensive_paper_dashboard(self, batch_idx: int, input_tensor: torch.Tensor,
-                                           output_tensor: torch.Tensor, phase: str = "train") -> Dict[str, str]:
+                                           output_tensor: torch.Tensor, phase: str = "train", global_step: int = None) -> Dict[str, str]:
         """Create comprehensive paper-ready dashboard like the reference image"""
         
         # Acquire lock to prevent concurrent access
@@ -727,7 +719,7 @@ class AutomaticAnalyzer:
             if len(self.batch_metrics) > 0:
                 latest_metrics = self.batch_metrics[-1]
                 attention_metrics = {k: v for k, v in latest_metrics.items()
-                                   if 'attention_' in k and any(word in k for word in ['entropy', 'concentration', 'sparsity', 'mean'])}
+                                   if 'attention_' in k and any(word in k for word in ['concentration', 'sparsity', 'mean'])}
 
                 if attention_metrics:
                     names = [k.replace('attention_bam_384_', '').replace('attention_bam_16_', '').replace('_', ' ').title()
@@ -735,7 +727,7 @@ class AutomaticAnalyzer:
                     values = list(attention_metrics.values())
 
                     # Create bar chart with better colors
-                    colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D']
+                    colors = ['#A23B72', '#F18F01', '#C73E1D', '#2E86AB']
                     bars = ax_metrics.bar(range(len(values)), values, color=colors[:len(values)], alpha=0.8)
                     ax_metrics.set_xticks(range(len(names)))
                     ax_metrics.set_xticklabels(names, rotation=45, ha='right', fontsize=10)
@@ -753,20 +745,15 @@ class AutomaticAnalyzer:
             # Attention evolution over time
             ax_evolution = fig.add_subplot(gs[2, 0:3])
             if len(self.batch_metrics) > 20:
-                entropy_values = []
                 concentration_values = []
                 sparsity_values = []
 
                 for metrics in self.batch_metrics[-100:]:  # Last 100 batches
-                    if 'attention_bam_384_attention_entropy' in metrics:
-                        entropy_values.append(metrics['attention_bam_384_attention_entropy'])
                     if 'attention_bam_384_attention_concentration_10' in metrics:
                         concentration_values.append(metrics['attention_bam_384_attention_concentration_10'])
                     if 'attention_bam_384_attention_sparsity' in metrics:
                         sparsity_values.append(metrics['attention_bam_384_attention_sparsity'])
 
-                if entropy_values:
-                    ax_evolution.plot(range(len(entropy_values)), entropy_values, 'g-', label='Entropy', linewidth=2, alpha=0.8)
                 if concentration_values:
                     ax_evolution.plot(range(len(concentration_values)), concentration_values, 'r-', label='Concentration', linewidth=2, alpha=0.8)
                 if sparsity_values:
@@ -814,7 +801,7 @@ class AutomaticAnalyzer:
 DAE-KAN Training Analysis Summary | {phase.upper()} Batch {batch_idx:06d} | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 Performance Metrics:    Loss: {latest_metrics['loss']:.6f}    |    MSE: {latest_metrics['mse']:.6f}    |    SSIM: {latest_metrics['ssim']:.4f}
-Attention Quality:     Entropy: {latest_metrics.get('attention_bam_384_attention_entropy', 0):.3f}    |    Concentration: {latest_metrics.get('attention_bam_384_attention_concentration_10', 0):.3f}    |    Sparsity: {latest_metrics.get('attention_bam_384_attention_sparsity', 0):.3f}
+Attention Quality:     Concentration: {latest_metrics.get('attention_bam_384_attention_concentration_10', 0):.3f}    |    Sparsity: {latest_metrics.get('attention_bam_384_attention_sparsity', 0):.3f}
 Spatial Analysis:      Center Distance: {latest_metrics.get('attention_bam_384_attention_center_distance', 0):.3f}    |    Spatial Variance: {latest_metrics.get('attention_bam_384_attention_spatial_variance', 0):.3f}    |    Peak Count: {latest_metrics.get('attention_bam_384_num_attention_peaks', 0):.0f}
 Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Current Epoch: {self._estimate_epoch(batch_idx)}    |    Attention Layers: {len(latest_metrics.get('attention_layers', []))}
                 """
@@ -896,17 +883,12 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
             # Attention evolution
             ax_attn_evo = fig2.add_subplot(gs2[1, :])
             if len(self.batch_metrics) > 20:
-                entropy_values = []
                 concentration_values = []
 
                 for metrics in self.batch_metrics[-200:]:
-                    if 'attention_bam_384_attention_entropy' in metrics:
-                        entropy_values.append(metrics['attention_bam_384_attention_entropy'])
                     if 'attention_bam_384_attention_concentration_10' in metrics:
                         concentration_values.append(metrics['attention_bam_384_attention_concentration_10'])
 
-                if entropy_values:
-                    ax_attn_evo.plot(range(len(entropy_values)), entropy_values, 'g-', label='Entropy', linewidth=2, alpha=0.8)
                 if concentration_values:
                     ax_attn_evo.plot(range(len(concentration_values)), concentration_values, 'r-', label='Concentration', linewidth=2, alpha=0.8)
 
@@ -966,14 +948,12 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
             if len(self.batch_metrics) > 10:
                 recent_metrics = self.batch_metrics[-10:]
 
-                entropy_vals = [m.get('attention_bam_384_attention_entropy', 0) for m in recent_metrics]
                 concentration_vals = [m.get('attention_bam_384_attention_concentration_10', 0) for m in recent_metrics]
                 sparsity_vals = [m.get('attention_bam_384_attention_sparsity', 0) for m in recent_metrics]
 
                 x = range(len(recent_metrics))
-                width = 0.25
+                width = 0.4
 
-                ax_metrics_comp.bar([i - width for i in x], entropy_vals, width, label='Entropy', alpha=0.8)
                 ax_metrics_comp.bar(x, concentration_vals, width, label='Concentration', alpha=0.8)
                 ax_metrics_comp.bar([i + width for i in x], sparsity_vals, width, label='Sparsity', alpha=0.8)
 
@@ -993,8 +973,6 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
                 # Create table data
                 table_data = [
                     ['Metric', 'BAM-384', 'BAM-16'],
-                    ['Entropy', f"{latest_metrics.get('attention_bam_384_attention_entropy', 0):.3f}",
-                     f"{latest_metrics.get('attention_bam_16_attention_entropy', 0):.3f}"],
                     ['Concentration', f"{latest_metrics.get('attention_bam_384_attention_concentration_10', 0):.3f}",
                      f"{latest_metrics.get('attention_bam_16_attention_concentration_10', 0):.3f}"],
                     ['Sparsity', f"{latest_metrics.get('attention_bam_384_attention_sparsity', 0):.3f}",
@@ -1031,8 +1009,9 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
 
             # Log paper figures to W&B if enabled and at the right frequency
             if self.should_log_to_wandb('paper_figures', batch_idx):
+                log_step = global_step if global_step is not None else batch_idx
                 for fig_name, fig_path in individual_figs.items():
-                    self.log_image_to_wandb_safe(fig_path, f"{phase}/paper_{fig_name}", step=batch_idx)
+                    self.log_image_to_wandb_safe(fig_path, f"{phase}/paper_{fig_name}", step=log_step)
 
             return {
                 'individual_figures': individual_figs
@@ -1042,7 +1021,7 @@ Training Progress:     Total Batches: {len(self.batch_metrics):04d}    |    Curr
             self._release_lock()
 
     def save_individual_components(self, batch_idx: int, input_tensor: torch.Tensor,
-                                 output_tensor: torch.Tensor, phase: str = "train") -> Dict[str, str]:
+                                 output_tensor: torch.Tensor, phase: str = "train", global_step: int = None) -> Dict[str, str]:
         """Save each analysis component as individual figure files"""
         
         # Acquire lock to prevent concurrent access
@@ -1384,9 +1363,10 @@ Training Progress:
 
             # Log individual components to W&B if enabled and at the right frequency
             if self.should_log_to_wandb('individual_components', batch_idx):
+                log_step = global_step if global_step is not None else batch_idx
                 for component_name, component_path in saved_files.items():
                     if component_name != 'html_summary':  # Don't log HTML to W&B
-                        self.log_image_to_wandb_safe(component_path, f"{phase}/components_{component_name}", step=batch_idx)
+                        self.log_image_to_wandb_safe(component_path, f"{phase}/components_{component_name}", step=log_step)
 
             return saved_files
         finally:
@@ -1679,7 +1659,8 @@ Training Progress:
             k (int): The number of clusters.
         """
         try:
-            from sklearn.cluster import KMeans, BisectingKMeans, GaussianMixture
+            from sklearn.cluster import KMeans, BisectingKMeans
+            from sklearn.mixture import GaussianMixture
             from sklearn.metrics import silhouette_score
             from sklearn.preprocessing import StandardScaler
 
@@ -1855,22 +1836,22 @@ Training Progress:
         ax2.legend()
         ax2.grid(True, alpha=0.3)
 
-        # 3. Attention entropy comparison
+        # 3. Attention concentration comparison
         ax3 = axes[0, 2]
         for i, (run_id, data) in enumerate(all_data.items()):
             if 'batch_metrics' in data:
-                entropies = [m.get('attention_bam_384_attention_entropy', 0)
-                           for m in data['batch_metrics']]
-                ax3.plot(entropies, label=run_id, color=colors[i], linewidth=2, alpha=0.8)
-        ax3.set_title('Attention Entropy Comparison')
+                concentrations = [m.get('attention_bam_384_attention_concentration_10', 0)
+                                for m in data['batch_metrics']]
+                ax3.plot(concentrations, label=run_id, color=colors[i], linewidth=2, alpha=0.8)
+        ax3.set_title('Attention Concentration Comparison')
         ax3.set_xlabel('Batch')
-        ax3.set_ylabel('Entropy')
+        ax3.set_ylabel('Concentration')
         ax3.legend()
         ax3.grid(True, alpha=0.3)
 
         # 4. Final metrics comparison (bar chart)
         ax4 = axes[1, 0]
-        metrics_to_compare = ['loss', 'ssim', 'attention_bam_384_attention_entropy']
+        metrics_to_compare = ['loss', 'ssim']
 
         x = np.arange(len(metrics_to_compare))
         width = 0.8 / len(all_data)
@@ -1897,7 +1878,7 @@ Training Progress:
         ax4.set_xlabel('Metrics')
         ax4.set_ylabel('Values')
         ax4.set_xticks(x + width * (len(all_data) - 1) / 2)
-        ax4.set_xticklabels(['Loss', 'SSIM', 'Entropy'])
+        ax4.set_xticklabels(['Loss', 'SSIM'])
         ax4.legend()
         ax4.grid(True, alpha=0.3)
 
@@ -1919,19 +1900,16 @@ Training Progress:
         ax6.axis('off')
 
         # Create summary table
-        table_data = [['Run ID', 'Final Loss', 'Final SSIM', 'Avg Entropy', 'Total Batches']]
+        table_data = [['Run ID', 'Final Loss', 'Final SSIM', 'Total Batches']]
 
         for run_id, data in all_data.items():
             if 'batch_metrics' in data and len(data['batch_metrics']) > 0:
                 final_metrics = data['batch_metrics'][-1]
-                avg_entropy = np.mean([m.get('attention_bam_384_attention_entropy', 0)
-                                     for m in data['batch_metrics']])
 
                 table_data.append([
                     run_id[:15] + '...' if len(run_id) > 15 else run_id,
                     f"{final_metrics.get('loss', 0):.4f}",
                     f"{final_metrics.get('ssim', 0):.4f}",
-                    f"{avg_entropy:.3f}",
                     str(len(data['batch_metrics']))
                 ])
 

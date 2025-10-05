@@ -207,7 +207,8 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                     input_tensor=x,
                     output_tensor=decoded,
                     loss=mse_loss.item(),
-                    phase="train"
+                    phase="train",
+                    global_step=self.global_step
                 )
 
                 # Log key attention metrics to W&B
@@ -222,13 +223,14 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                         batch_idx=batch_idx,
                         input_tensor=x,
                         output_tensor=decoded,
-                        phase="train"
+                        phase="train",
+                        global_step=self.global_step
                     )
 
                     # Log visualization to W&B (also logged by AutoAnalyzer now)
                     if hasattr(self, 'logger') and self.logger is not None:
                         self.logger.experiment.log({
-                            f'train/batch_visualization_{batch_idx}': wandb.Image(viz_path)
+                            f'train/batch_visualization_{self.global_step}': wandb.Image(viz_path)
                         })
 
                 # Save detailed individual components every N batches (less frequent)
@@ -237,7 +239,8 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                         batch_idx=batch_idx,
                         input_tensor=x,
                         output_tensor=decoded,
-                        phase="train"
+                        phase="train",
+                        global_step=self.global_step
                     )
 
                     # Log component paths to console for debugging
@@ -252,15 +255,9 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                                 batch_idx=batch_idx,
                                 input_tensor=x,
                                 output_tensor=decoded,
-                                phase="train"
+                                phase="train",
+                                global_step=self.global_step
                             )
-
-                            print(f"✓ Paper dashboard created for batch {batch_idx}")
-                        except Exception as e:
-                            print(f"⚠ Paper dashboard creation failed for batch {batch_idx}: {e}")
-
-                    # Save metrics
-                    self.auto_analyzer.save_metrics()
 
                     print(f"✓ Analysis completed for batch {batch_idx}")
 
@@ -334,7 +331,8 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                     input_tensor=x,
                     output_tensor=decoded,
                     loss=mse_loss.item(),
-                    phase="val"
+                    phase="val",
+                    global_step=self.global_step
                 )
 
                 # Log key attention metrics to W&B
@@ -347,13 +345,14 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                     batch_idx=batch_idx,
                     input_tensor=x,
                     output_tensor=decoded,
-                    phase="val"
+                    phase="val",
+                    global_step=self.global_step
                 )
 
                 # Log visualization to W&B (also logged by AutoAnalyzer now)
                 if hasattr(self, 'logger') and self.logger is not None:
                     self.logger.experiment.log({
-                        f'val/batch_visualization_{batch_idx}': wandb.Image(viz_path)
+                        f'val/batch_visualization_{self.global_step}': wandb.Image(viz_path)
                     })
 
                 # Save individual components for validation (first 3 batches only)
@@ -362,7 +361,8 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                         batch_idx=batch_idx,
                         input_tensor=x,
                         output_tensor=decoded,
-                        phase="val"
+                        phase="val",
+                        global_step=self.global_step
                     )
 
                     # Log component paths to console for debugging
@@ -377,11 +377,9 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                             batch_idx=batch_idx,
                             input_tensor=x,
                             output_tensor=decoded,
-                            phase="val"
+                            phase="val",
+                            global_step=self.global_step
                         )
-                        print(f"✓ Validation paper dashboard created for batch {batch_idx}")
-                    except Exception as e:
-                        print(f"⚠ Validation paper dashboard creation failed for batch {batch_idx}: {e}")
 
                 print(f"✓ Validation analysis completed for batch {batch_idx}")
 
