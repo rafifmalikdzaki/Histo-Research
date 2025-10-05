@@ -258,6 +258,12 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                                 phase="train",
                                 global_step=self.global_step
                             )
+                            print(f"✓ Paper dashboard created for batch {batch_idx}")
+                        except Exception as e:
+                            print(f"⚠ Paper dashboard creation failed for batch {batch_idx}: {e}")
+
+                    # Save metrics
+                    self.auto_analyzer.save_metrics()
 
                     print(f"✓ Analysis completed for batch {batch_idx}")
 
@@ -380,6 +386,9 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                             phase="val",
                             global_step=self.global_step
                         )
+                        print(f"✓ Validation paper dashboard created for batch {batch_idx}")
+                    except Exception as e:
+                        print(f"⚠ Validation paper dashboard creation failed for batch {batch_idx}: {e}")
 
                 print(f"✓ Validation analysis completed for batch {batch_idx}")
 
