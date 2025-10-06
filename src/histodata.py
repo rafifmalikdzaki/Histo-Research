@@ -6,16 +6,19 @@ import numpy as np
 from pathlib import Path
 import cv2
 
-def create_dataset(subset: str, image_path: str = None):
+def create_dataset(subset: str, image_path: str = None, dataset_name: str = "HeparUnifiedPNG"):
     if image_path is None:
         image_path = Path(f"./data/processed")
 
-    csv_path = Path(image_path) / f"{subset}.csv"
+    # Create CSV filename based on dataset name
+    dataset_csv_name = f"{subset}_{dataset_name.lower()}.csv"
+    csv_path = Path(image_path) / dataset_csv_name
+
     if not csv_path.exists():
-        raise FileNotFoundError(f"CSV file for subset '{subset}' not found at {csv_path}")
+        raise FileNotFoundError(f"CSV file for dataset '{dataset_name}' and subset '{subset}' not found at {csv_path}")
 
     df = pd.read_csv(csv_path)
-    X = df['Image'].apply(lambda x: image_path / "HeparUnifiedPNG" / subset / x)
+    X = df['Image'].apply(lambda x: image_path / dataset_name / x)
 
     missing_files = []
 

@@ -1424,8 +1424,10 @@ if __name__ == '__main__':
     parser.add_argument('--embeddings-per-epoch', type=int, default=500, help='Number of embeddings to collect and save at each epoch end')
     parser.add_argument('--max-embeddings-to-store', type=int, default=1000, help='Maximum number of embeddings to store in memory for final analysis')
     parser.add_argument('--save-epoch-embeddings', action='store_true', default=True, help='Save embeddings at the end of each epoch')
-    parser.add_argument('--project-name', type=str, default='histopath-kan-optimized-analysis', help='W&B project name')
+    parser.add_argument('--project-name', type=str, default='histopath-kan-pannuke-analysis', help='W&B project name')
     parser.add_argument('--model-name', type=str, default="dae_kan_attention", help='Name of the model to use')
+    parser.add_argument('--dataset', type=str, default='pannuke', choices=['pannuke', 'hepar'],
+                       help='Dataset to use for training (default: pannuke)')
 
     # Ablation study organization arguments
     parser.add_argument('--ablation-mode', type=str, default='baseline',
@@ -1444,6 +1446,18 @@ if __name__ == '__main__':
     parser.add_argument('--fast-mode', action='store_true', help='Fast mode: 1 epoch, minimal analysis, quick training')
 
     args = parser.parse_args()
+
+    # Map dataset names to directory names and update project name
+    dataset_mapping = {
+        'pannuke': 'PANnuke',
+        'hepar': 'HeparUnifiedPNG'
+    }
+
+    args.dataset_dir = dataset_mapping[args.dataset]
+
+    # Update project name based on dataset
+    if args.project_name == 'histopath-kan-pannuke-analysis':  # Only update if default
+        args.project_name = f'histopath-kan-{args.dataset}-analysis'
 
     # Fast mode configuration
     if args.fast_mode:
@@ -1475,8 +1489,12 @@ if __name__ == '__main__':
             num_workers = 2
 
     # Create datasets
-    train_ds = ImageDataset(*create_dataset('train'))
-    test_ds = ImageDataset(*create_dataset('test'))
+    train_ds = ImageDataset(*create_dataset('train', dataset_name=args.dataset_dir))
+    test_ds = ImageDataset(*create_dataset('test', dataset_name=args.dataset_dir))
+
+    print(f"✅ Using dataset: {args.dataset} (directory: {args.dataset_dir})")
+    print(f"✅ Training samples: {len(train_ds)}")
+    print(f"✅ Test samples: {len(test_ds)}")
 
     # Determine optimal batch size
     if args.batch_size is None:
