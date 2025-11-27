@@ -1212,7 +1212,7 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
 
             # Create visualization
             fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-            fig.suptitle(f'{phase.capitalize()} Embedding Dimensionality Reduction', fontsize=16, fontweight='bold')
+            fig.suptitle(f'{phase.capitalize()} Embedding Dimensionality Reduction', fontsize=24, fontweight='bold')
 
             # Try UMAP first
             try:
@@ -1220,10 +1220,10 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                 reducer = umap.UMAP(n_neighbors=15, min_dist=0.1, random_state=42)
                 embedding_2d = reducer.fit_transform(embeddings_scaled)
 
-                axes[0].scatter(embedding_2d[:, 0], embedding_2d[:, 1], alpha=0.6, s=30)
-                axes[0].set_title('UMAP Projection')
-                axes[0].set_xlabel('UMAP 1')
-                axes[0].set_ylabel('UMAP 2')
+                axes[0].scatter(embedding_2d[:, 0], embedding_2d[:, 1], alpha=0.7, s=40)
+                axes[0].set_title('UMAP Projection', fontsize=22, fontweight='bold')
+                axes[0].set_xlabel('UMAP 1', fontsize=20)
+                axes[0].set_ylabel('UMAP 2', fontsize=20)
                 axes[0].grid(True, alpha=0.3)
 
             except ImportError:
@@ -1237,9 +1237,9 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
             embedding_2d = tsne.fit_transform(embeddings_scaled)
 
             axes[1].scatter(embedding_2d[:, 0], embedding_2d[:, 1], alpha=0.6, s=30)
-            axes[1].set_title('t-SNE Projection')
-            axes[1].set_xlabel('t-SNE 1')
-            axes[1].set_ylabel('t-SNE 2')
+            axes[1].set_title('t-SNE Projection', fontsize=18, fontweight='bold')
+            axes[1].set_xlabel('t-SNE 1', fontsize=16)
+            axes[1].set_ylabel('t-SNE 2', fontsize=16)
             axes[1].grid(True, alpha=0.3)
 
             plt.tight_layout()

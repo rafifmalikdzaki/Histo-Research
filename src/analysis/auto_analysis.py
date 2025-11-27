@@ -1696,7 +1696,7 @@ Training Progress:
             }
 
             fig, axes = plt.subplots(len(clustering_models), 3, figsize=(20, 5 * len(clustering_models)), squeeze=False)
-            fig.suptitle(f'{phase.capitalize()} Embedding Clustering Analysis (k={k})', fontsize=16, fontweight='bold')
+            fig.suptitle(f'{phase.capitalize()} Embedding Clustering Analysis (k={k})', fontsize=24, fontweight='bold')
 
             for i, (name, model) in enumerate(clustering_models.items()):
                 # Fit model and get labels
@@ -1714,21 +1714,21 @@ Training Progress:
 
                 # 1. Scatter plot of clusters
                 ax = axes[i, 0]
-                scatter = ax.scatter(embedding_2d[:, 0], embedding_2d[:, 1], c=cluster_labels, cmap='viridis', s=10, alpha=0.7)
-                ax.set_title(f'{name}: UMAP Projection')
-                ax.set_xlabel('UMAP 1')
-                ax.set_ylabel('UMAP 2')
+                scatter = ax.scatter(embedding_2d[:, 0], embedding_2d[:, 1], c=cluster_labels, cmap='viridis', s=25, alpha=0.7)
+                ax.set_title(f'{name}: UMAP Projection', fontsize=22, fontweight='bold')
+                ax.set_xlabel('UMAP 1', fontsize=20)
+                ax.set_ylabel('UMAP 2', fontsize=20)
                 ax.grid(True, alpha=0.3)
                 if len(np.unique(cluster_labels)) > 1:
-                    legend1 = ax.legend(*scatter.legend_elements(), title="Clusters")
+                    legend1 = ax.legend(*scatter.legend_elements(), title="Clusters", fontsize=18)
                     ax.add_artist(legend1)
 
                 # 2. Cluster distribution
                 ax = axes[i, 1]
                 ax.hist(cluster_labels, bins=np.arange(k + 1) - 0.5, rwidth=0.8, alpha=0.7)
-                ax.set_title(f'{name}: Cluster Distribution')
-                ax.set_xlabel('Cluster ID')
-                ax.set_ylabel('Count')
+                ax.set_title(f'{name}: Cluster Distribution', fontsize=18, fontweight='bold')
+                ax.set_xlabel('Cluster ID', fontsize=16)
+                ax.set_ylabel('Count', fontsize=16)
                 ax.set_xticks(range(k))
                 ax.grid(True, alpha=0.3)
 
@@ -1740,12 +1740,12 @@ Training Progress:
                     'Calinski-Harabasz': ch_score
                 }
                 bars = ax.bar(scores.keys(), scores.values(), color=['coral', 'skyblue', 'lightgreen'], alpha=0.7)
-                ax.set_title(f'{name}: Clustering Scores')
-                ax.set_ylabel('Score')
+                ax.set_title(f'{name}: Clustering Scores', fontsize=18, fontweight='bold')
+                ax.set_ylabel('Score', fontsize=16)
                 ax.grid(True, axis='y', alpha=0.3)
                 for bar in bars:
                     yval = bar.get_height()
-                    ax.text(bar.get_x() + bar.get_width()/2.0, yval, f'{yval:.3f}', va='bottom' if yval >= 0 else 'top')
+                    ax.text(bar.get_x() + bar.get_width()/2.0, yval, f'{yval:.3f}', va='bottom' if yval >= 0 else 'top', fontsize=12)
 
             plt.tight_layout(rect=[0, 0.03, 1, 0.95])
             viz_path = os.path.join(embeddings_dir, f'{phase}_clustering_analysis.png')
