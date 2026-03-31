@@ -18,7 +18,14 @@ def create_dataset(subset: str, image_path: str = None, dataset_name: str = "Hep
         raise FileNotFoundError(f"CSV file for dataset '{dataset_name}' and subset '{subset}' not found at {csv_path}")
 
     df = pd.read_csv(csv_path)
-    X = df['Image'].apply(lambda x: image_path / dataset_name / x)
+    
+    # Add subdirectory based on subset (train/test)
+    if subset == 'train':
+        X = df['Image'].apply(lambda x: image_path / dataset_name / 'train' / x)
+    elif subset == 'test':
+        X = df['Image'].apply(lambda x: image_path / dataset_name / 'test' / x)
+    else:
+        X = df['Image'].apply(lambda x: image_path / dataset_name / x)
 
     missing_files = []
 
