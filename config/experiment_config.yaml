@@ -1,0 +1,301 @@
+# DAE-KAN Experiment Configuration
+# This file contains all hyperparameters for the attention-enhanced dual autoencoder
+
+# ============================================================================
+# EXPERIMENT SETTINGS
+# ============================================================================
+experiment:
+  name: "dae_kan_liver_histopathology"
+  description: "Attention-Enhanced Dual Autoencoder with KAN for Liver Histopathological Image Clustering"
+  version: "1.0.0"
+  seed: 42  # Global seed for reproducibility
+
+# ============================================================================
+# DATA SETTINGS
+# ============================================================================
+data:
+  # Dataset selection: "PanNuke" or "HeparUnifiedPNG" (IMI)
+  dataset_name: "HeparUnifiedPNG"
+  
+  # Data paths
+  data_dir: "./data/processed"
+  train_csv: "train_heparunifiedpng.csv"
+  test_csv: "test_heparunifiedpng.csv"
+  
+  # Image preprocessing
+  image_size: 128  # Input image dimensions (128x128)
+  channels: 3  # RGB channels
+  normalization: "imagenet"  # or "none"
+  
+  # Data loading
+  batch_size: 8
+  num_workers: 4
+  pin_memory: true
+  persistent_workers: true
+
+# ============================================================================
+# MODEL ARCHITECTURE
+# ============================================================================
+model:
+  # Model selection: "dae_kan_attention", "baseline", "bam_only", "kan_only", 
+  #                  "no_bam", "no_kan", "no_eka"
+  name: "dae_kan_attention"
+  
+  # Encoder settings
+  encoder:
+    initial_channels: 384
+    bottleneck_channels: 16
+    
+  # Latent space
+  latent_dim: 128  # Dimension of latent representation z
+  
+  # KAN (Kolmogorov-Arnold Network) settings
+  kan:
+    enabled: true
+    grid_size: 3  # Number of grid intervals for B-spline basis
+    spline_order: 2  # Order of B-spline polynomials
+    scale_noise: 0.1
+    scale_base: 1.0
+    scale_spline: 1.0
+    enable_standalone_scale_spline: true
+    
+  # Attention settings
+  attention:
+    # BAM (Bottleneck Attention Module)
+    bam:
+      enabled: true
+      reduction: 16  # Channel reduction ratio
+      kernel_size: 3
+      dilation: 4
+      
+    # ECA (Efficient Channel Attention)
+    eca:
+      enabled: true
+      kernel_size: 3  # Adaptive kernel size: k = |log2(channels) + b| / gamma
+      gamma: 2
+      b: 1
+
+# ============================================================================
+# CLUSTERING SETTINGS
+# ============================================================================
+clustering:
+  # Number of clusters to discover
+  n_clusters: 5
+  
+  # Clustering algorithms to evaluate
+  algorithms:
+    - "kmeans"
+    - "bisecting_kmeans"
+    - "gmm"  # Gaussian Mixture Model
+  
+  # Clustering metrics
+  metrics:
+    internal:
+      - "davies_bouldin"  # Lower is better
+      - "calinski_harabasz"  # Higher is better
+      - "silhouette"  # Higher is better
+      - "xie_beni"  # Lower is better
+    external:
+      - "adjusted_mutual_info"  # When labels available
+      - "adjusted_rand_index"  # When labels available
+  
+  # Bootstrap stability analysis
+  bootstrap:
+    enabled: true
+    n_resamples: 10
+    resample_ratio: 0.8  # 80% of data per bootstrap
+
+# ============================================================================
+# TRAINING SETTINGS
+# ============================================================================
+training:
+  # Optimization
+  optimizer: "adamw"  # or "adam"
+  learning_rate: 0.002
+  weight_decay: 1e-5
+  betas: [0.9, 0.999]
+  eps: 1e-8
+  
+  # Learning rate scheduler
+  scheduler:
+    type: "reduce_on_plateau"
+    mode: "min"
+    factor: 0.7
+    patience: 2
+    min_lr: 1e-5
+  
+  # Training duration
+  epochs: 30
+  min_epochs: 1
+  max_epochs: 50
+  
+  # Early stopping
+  early_stopping:
+    enabled: false
+    patience: 5
+    monitor: "val/loss"
+    mode: "min"
+  
+  # Loss function
+  loss:
+    type: "mse"  # Mean Squared Error
+    reconstruction_weight: 1.0
+    kl_weight: 0.0  # For VAE-style regularization (if needed)
+  
+  # Gradient clipping
+  gradient_clip_val: 1.0
+  gradient_clip_algorithm: "norm"
+  
+  # Precision
+  precision: "16-mixed"  # Mixed precision training
+  
+  # Validation
+  val_check_interval: 1.0  # Validate every epoch
+  check_val_every_n_epoch: 1
+
+# ============================================================================
+# CHECKPOINTING
+# ============================================================================
+checkpoint:
+  monitor: "val/loss"
+  mode: "min"
+  save_top_k: 3
+  save_last: true
+  filename: "{epoch:02d}-{val/loss:.4f}"
+  
+  # Checkpoint frequency
+  every_n_epochs: 5
+  save_on_train_epoch_end: false
+
+# ============================================================================
+# LOGGING & ANALYSIS
+# ============================================================================
+logging:
+  # Weights & Biases
+  wandb:
+    enabled: true
+    project: "dae-kan-liver"
+    entity: null  # Use your W&B username
+    tags: ["liver", "histopathology", "clustering", "dae", "kan"]
+    group: null
+  
+  # Analysis frequency during training
+  analysis_frequency: 100  # Run full analysis every N batches
+  quick_analysis_frequency: 20  # Quick analysis every N batches
+  dashboard_frequency: 200  # Comprehensive dashboard every N batches
+  
+  # Metrics logging
+  log_metrics_frequency: 10  # Log metrics to W&B every N batches
+  log_visualizations_frequency: 100  # Log visualizations every N batches
+  
+  # What to log
+  log_reconstruction: true
+  log_attention_maps: true
+  log_embeddings: true
+  log_clustering: true
+
+# ============================================================================
+# EVALUATION SETTINGS
+# ============================================================================
+evaluation:
+  # Multi-seed evaluation for statistical significance
+  multi_seed:
+    enabled: true
+    seeds: [42, 123, 456, 789, 1011]
+    n_runs: 5
+  
+  # Statistical tests
+  statistical_tests:
+    - "wilcoxon_signed_rank"  # Non-parametric paired test
+    - "paired_t_test"  # Parametric paired test
+  
+  # Effect size
+  effect_size: "cohens_d"
+  
+  # Confidence intervals
+  confidence_level: 0.95
+
+# ============================================================================
+# HYPERPARAMETER SENSITIVITY ANALYSIS
+# ============================================================================
+sensitivity_analysis:
+  enabled: true
+  
+  # Parameter ranges to sweep
+  latent_dim: [32, 64, 128, 256]
+  n_clusters: [3, 4, 5, 6, 7]
+  kan_spline_order: [3, 5, 7]
+  eca_kernel_size: [3, 5, 7]
+  
+  # Grid search settings
+  n_jobs: 1  # Parallel jobs (1 for GPU)
+  verbose: true
+
+# ============================================================================
+# CROSS-DOMAIN TRANSFER
+# ============================================================================
+transfer_learning:
+  # Transfer directions
+  directions:
+    - source: "PanNuke"
+      target: "HeparUnifiedPNG"
+    - source: "HeparUnifiedPNG"
+      target: "PanNuke"
+  
+  # Fine-tuning strategy
+  strategy:
+    # Which layers to freeze
+    freeze_encoder: false
+    freeze_bottleneck: false
+    freeze_decoder: false
+    
+    # Fine-tuning learning rate
+    finetune_lr: 0.0001
+    finetune_epochs: 10
+    
+    # Layer-wise learning rate decay
+    layer_decay: 1.0  # No decay by default
+
+# ============================================================================
+# COMPUTATIONAL RESOURCES
+# ============================================================================
+resources:
+  # Device
+  device: "cuda"  # or "cpu"
+  gpu_id: 0
+  
+  # Memory optimization
+  use_gradient_checkpointing: false
+  use_amp: true  # Automatic mixed precision
+  
+  # Profiling
+  profile:
+    enabled: true
+    profile_training: true
+    profile_inference: true
+    record_memory: true
+    record_timing: true
+
+# ============================================================================
+# OUTPUT SETTINGS
+# ============================================================================
+output:
+  # Base directory for all outputs
+  base_dir: "./outputs"
+  
+  # Subdirectories (auto-created)
+  checkpoints_dir: "checkpoints"
+  metrics_dir: "metrics"
+  visualizations_dir: "visualizations"
+  embeddings_dir: "embeddings"
+  logs_dir: "logs"
+  
+  # File formats
+  image_format: "png"
+  image_dpi: 300
+  save_pdf: true
+  
+  # Results export
+  export_csv: true
+  export_json: true
+  export_wandb: true

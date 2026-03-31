@@ -1404,6 +1404,8 @@ def get_optimal_batch_size(model, device, input_size=(3, 128, 128)):
 if __name__ == '__main__':
     import argparse
     import pandas as pd
+    from utils.reproducibility import set_seed, create_experiment_config, save_config
+    from pathlib import Path
 
     # Optimized CUDA settings
     os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True,max_split_size_mb:128'
@@ -1411,6 +1413,12 @@ if __name__ == '__main__':
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Train optimized DAE-KAN model with analysis')
+    
+    # Reproducibility arguments (Task 1)
+    parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility (default: 42)')
+    parser.add_argument('--config-path', type=str, default='config/experiment_config.yaml', help='Path to experiment configuration file')
+    parser.add_argument('--output-dir', type=str, default='outputs', help='Base output directory for experiments')
+    
     parser.add_argument('--gpu', type=int, default=0, help='GPU ID to use (default: 0)')
     parser.add_argument('--no-cuda', action='store_true', help='Disable CUDA and use CPU')
     parser.add_argument('--batch-size', type=int, default=None, help='Batch size (auto-detected if not specified)')
@@ -1468,6 +1476,29 @@ if __name__ == '__main__':
         args.wandb_viz_freq = max(50, args.wandb_viz_freq)
         args.wandb_paper_freq = max(100, args.wandb_paper_freq)
         print("🚀 Fast mode enabled: 1 epoch, reduced analysis frequency")
+
+    # Set random seed for reproducibility (Task 1 - Reviewer 1 #2, Reviewer 2)
+    print(f"\n🔬 Setting random seed: {args.seed}")
+    set_seed(args.seed)
+    
+    # Create experiment directory and save configuration
+    experiment_name = f"{args.model_name}_seed{args.seed}"
+    if hasattr(args, 'experiment_name') and args.experiment_name:
+        experiment_name = args.experiment_name
+    
+    exp_dir, config = create_experiment_config(
+        experiment_name=experiment_name,
+        custom_params={
+            'seed': args.seed,
+            'model_name': args.model_name,
+            'dataset': args.dataset,
+            'batch_size': args.batch_size,
+            'max_epochs': args.max_epochs,
+            'analysis_frequency': args.analysis_freq,
+        },
+        base_dir=args.output_dir
+    )
+    print(f"✓ Experiment directory: {exp_dir}")
 
     # Set device
     if args.no_cuda:

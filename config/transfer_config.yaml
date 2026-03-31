@@ -1,0 +1,212 @@
+# Transfer Learning Configuration for Cross-Domain Evaluation
+# This file documents the transfer learning procedure (Reviewer 1 #5)
+
+# ============================================================================
+# TRANSFER DIRECTIONS
+# ============================================================================
+transfer:
+  # Direction 1: PanNuke → IMI (HeparUnifiedPNG)
+  pannuke_to_imi:
+    source: "PanNuke"
+    target: "HeparUnifiedPNG"
+    description: "Evaluate generalization from multi-organ to liver-specific"
+    
+  # Direction 2: IMI → PanNuke
+  imi_to_pannuke:
+    source: "HeparUnifiedPNG"
+    target: "PanNuke"
+    description: "Evaluate generalization from liver-specific to multi-organ"
+
+# ============================================================================
+# FINE-TUNING STRATEGIES
+# ============================================================================
+strategies:
+  # Zero-shot transfer (no fine-tuning)
+  zero_shot:
+    description: "Direct transfer without any fine-tuning"
+    freeze_encoder: true
+    freeze_bottleneck: true
+    freeze_decoder: true
+    finetune_epochs: 0
+    finetune_lr: 0.0
+    
+  # Full fine-tuning
+  full_finetune:
+    description: "Fine-tune all layers with lower learning rate"
+    freeze_encoder: false
+    freeze_bottleneck: false
+    freeze_decoder: false
+    finetune_epochs: 10
+    finetune_lr: 0.0001
+    
+  # Encoder freeze (linear probing)
+  linear_probe:
+    description: "Freeze encoder, only fine-tune decoder"
+    freeze_encoder: true
+    freeze_bottleneck: true
+    freeze_decoder: false
+    finetune_epochs: 15
+    finetune_lr: 0.001
+    
+  # Partial fine-tuning (bottleneck only)
+  bottleneck_tune:
+    description: "Fine-tune only bottleneck layers"
+    freeze_encoder: true
+    freeze_bottleneck: false
+    freeze_decoder: true
+    finetune_epochs: 20
+    finetune_lr: 0.0005
+
+# ============================================================================
+# LAYER-WISE LEARNING RATE DECAY
+# ============================================================================
+layer_decay:
+  enabled: false
+  decay_rate: 0.9  # Each layer gets lr * decay_rate^layer_depth
+  layers:
+    - name: "encoder1"
+      depth: 0
+      lr_multiplier: 1.0
+    - name: "encoder2"
+      depth: 1
+      lr_multiplier: 0.9
+    - name: "encoder3"
+      depth: 2
+      lr_multiplier: 0.81
+    - name: "bottleneck"
+      depth: 3
+      lr_multiplier: 0.729
+    - name: "decoder"
+      depth: 4
+      lr_multiplier: 0.6561
+
+# ============================================================================
+# DOMAIN ADAPTATION OPERATIONALIZATION
+# ============================================================================
+domain_adaptation:
+  # Feature alignment methods
+  feature_alignment:
+    enabled: false
+    method: "MMD"  # Maximum Mean Discrepancy
+    weight: 0.1
+    
+  # Adversarial domain adaptation
+  adversarial:
+    enabled: false
+    discriminator_layers: [256, 128, 2]
+    gradient_reversal_weight: 0.5
+    
+  # Self-training with pseudo-labels
+  self_training:
+    enabled: false
+    confidence_threshold: 0.8
+    pseudo_label_weight: 0.3
+
+# ============================================================================
+# CROSS-DOMAIN GENERALIZATION METRICS
+# ============================================================================
+evaluation:
+  # Primary metrics
+  metrics:
+    - "silhouette"
+    - "davies_bouldin"
+    - "calinski_harabasz"
+    - "adjusted_mutual_info"
+    - "adjusted_rand_index"
+  
+  # Transfer gap analysis
+  transfer_gap:
+    enabled: true
+    metrics:
+      - "silhouette_gap"
+      - "davies_bouldin_gap"
+      - "ami_gap"
+  
+  # Statistical significance
+  statistical_tests:
+    - "paired_t_test"
+    - "wilcoxon_signed_rank"
+  
+  # Effect size
+  effect_size: "cohens_d"
+
+# ============================================================================
+# TRAINING PROTOCOL FOR TRANSFER LEARNING
+# ============================================================================
+training_protocol:
+  # Step 1: Pre-train on source domain
+  pretraining:
+    epochs: 30
+    batch_size: 8
+    learning_rate: 0.002
+    optimizer: "adamw"
+    scheduler: "reduce_on_plateau"
+    early_stopping: true
+    patience: 5
+  
+  # Step 2: Transfer to target domain
+  transfer:
+    # Which layers to update
+    trainable_layers:
+      - "bottleneck.attn1"
+      - "bottleneck.attn2"
+      - "ae_decoder"
+    
+    # Learning rate scheduling
+    scheduler:
+      type: "cosine_annealing"
+      T_max: 10
+      eta_min: 1e-6
+    
+    # Regularization
+    weight_decay: 0.01
+    dropout: 0.1
+    
+    # Early stopping
+    early_stopping:
+      enabled: true
+      patience: 3
+      restore_best: true
+
+# ============================================================================
+# CONTROLLED EXPERIMENTS FOR ROBUSTNESS
+# ============================================================================
+controlled_experiments:
+  # Experiment 1: Train on one organ, test on another (PanNuke only)
+  cross_organ:
+    enabled: false
+    source_tissue: "prostate"
+    target_tissue: "liver"
+    
+  # Experiment 2: Train on stained, test on unstained
+  stain_variation:
+    enabled: false
+    source_stain: "H&E"
+    target_stain: "H&E_variant"
+    
+  # Experiment 3: Train on high resolution, test on low resolution
+  resolution_variation:
+    enabled: false
+    source_resolution: 128
+    target_resolution: 64
+
+# ============================================================================
+# DOCUMENTATION REQUIREMENTS (Reviewer 1 #5)
+# ============================================================================
+documentation:
+  # Report these in the paper
+  report:
+    - "Number of frozen layers"
+    - "Number of fine-tuned layers"
+    - "Fine-tuning epochs and learning rate"
+    - "Source and target dataset sizes"
+    - "Transfer gap for each metric"
+    - "Statistical significance of transfer performance"
+    
+  # Reproducibility checklist
+  checklist:
+    - "Random seed used"
+    - "GPU hardware specifications"
+    - "Training time for fine-tuning"
+    - "Memory requirements"
+    - "Code availability"

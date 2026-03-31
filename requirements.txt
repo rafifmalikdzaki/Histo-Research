@@ -1,0 +1,57 @@
+# Requirements for DAE-KAN: Attention-Enhanced Dual Autoencoder for Liver Histopathological Image Clustering
+# Generated from pyproject.toml with pinned versions for reproducibility
+# Python version: >=3.11
+
+# Core deep learning frameworks
+torch>=2.8.0
+torchvision>=0.23.0
+pytorch-lightning>=2.5.5
+lightning>=2.5.5
+
+# Machine learning and data processing
+numpy>=1.26.4
+pandas>=2.3.2
+scikit-learn>=1.7.2
+scikit-image>=0.25.2
+
+# Visualization
+matplotlib>=3.10.6
+seaborn>=0.13.2
+plotly>=6.3.1
+altair>=5.5.0
+
+# Data augmentation and image processing
+albumentations>=2.0.8
+pillow>=11.0.0
+opencv-python>=4.8.0
+patchify>=0.2.3
+
+# Model analysis and interpretation
+captum>=0.8.0
+grad-cam>=1.5.5
+thop>=0.1.1.post2209072238
+ptflops>=0.7.5
+torchinfo>=1.8.0
+
+# Dimensionality reduction
+umap-learn>=0.5.9.post2
+
+# Experiment tracking
+wandb>=0.22.1
+
+# Configuration and utilities
+pyyaml>=6.0.3
+omegaconf>=2.3.0
+click>=8.3.0
+tqdm>=4.67.1
+rich>=14.1.0
+
+# Jupyter and interactive development
+jupyter>=1.1.1
+jupyterlab>=4.4.9
+notebook>=7.4.7
+voila>=0.5.11
+fastplotlib>=0.5.1
+
+# Polars for fast data processing
+polars>=1.33.1

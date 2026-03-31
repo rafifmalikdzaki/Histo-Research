@@ -1,0 +1,71 @@
+# Conda environment for DAE-KAN
+# Usage: conda env create -f environment.yml
+
+name: histodae
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Python version
+  - python=3.11
+  
+  # Core deep learning
+  - pytorch=2.8.0
+  - pytorch-cuda=12.1
+  - torchvision=0.23.0
+  - pytorch-lightning=2.5.5
+  
+  # Scientific computing
+  - numpy>=1.26.4
+  - pandas>=2.3.2
+  - scipy>=1.12.0
+  
+  # Machine learning
+  - scikit-learn>=1.7.2
+  - scikit-image>=0.25.2
+  
+  # Visualization
+  - matplotlib>=3.10.6
+  - seaborn>=0.13.2
+  - plotly>=6.3.1
+  
+  # Image processing
+  - pillow>=11.0.0
+  - opencv>=4.8.0
+  
+  # Dimensionality reduction
+  - umap-learn>=0.5.9
+  
+  # Configuration
+  - pyyaml>=6.0.3
+  - omegaconf>=2.3.0
+  
+  # Utilities
+  - tqdm>=4.67.1
+  - rich>=14.1.0
+  
+  # Jupyter (optional)
+  - jupyter>=1.1.1
+  - jupyterlab>=4.4.9
+  - notebook>=7.4.7
+  
+  # Pip packages (not available via conda)
+  - pip>=24.0
+  - pip:
+      - lightning>=2.5.5
+      - albumentations>=2.0.8
+      - captum>=0.8.0
+      - grad-cam>=1.5.5
+      - thop>=0.1.1.post2209072238
+      - ptflops>=0.7.5
+      - torchinfo>=1.8.0
+      - wandb>=0.22.1
+      - click>=8.3.0
+      - polars>=1.33.1
+      - patchify>=0.2.3
+      - fastplotlib>=0.5.1
+      - voila>=0.5.11
+      - altair>=5.5.0
