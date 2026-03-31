@@ -1,0 +1,217 @@
+# Parallel Execution Configuration for DAE-KAN Experiments
+# This file defines experiment presets and GPU allocation strategies
+
+# ============================================================================
+# GPU CONFIGURATION
+# ============================================================================
+gpu:
+  # Auto-detect GPUs if not specified (true recommended)
+  auto_detect: true
+  
+  # Specific GPUs to use (if auto_detect is false)
+  # gpu_ids: [0, 1, 2, 3]
+  
+  # Memory management
+  memory_limit_gb: 20  # Max GPU memory per experiment (prevents OOM)
+  
+  # CUDA settings
+  cuda_visible_devices: true  # Set CUDA_VISIBLE_DEVICES for isolation
+  
+# ============================================================================
+# EXECUTION SETTINGS
+# ============================================================================
+execution:
+  # Maximum parallel experiments (default: number of GPUs)
+  max_parallel: null  # null = auto-detect based on GPUs
+  
+  # Retry failed experiments
+  retry_failed: true
+  max_retries: 2
+  
+  # Checkpoint settings
+  checkpoint_interval: 1  # Save checkpoint after N experiments complete
+  checkpoint_file: '.parallel_checkpoint.json'
+  
+  # Logging
+  log_dir: 'outputs/parallel_logs'
+  log_level: 'INFO'
+  
+  # Progress reporting
+  progress_interval: 60  # Report progress every N seconds
+
+# ============================================================================
+# EXPERIMENT PRESETS
+# ============================================================================
+presets:
+  # Main experiments (proposed method + ablation variants)
+  main_experiments:
+    dataset: 'hepar'
+    epochs: 30
+    batch_size: 8
+    seeds: [42, 123, 456, 789, 1011]
+    models:
+      - name: 'dae_kan_attention'
+        priority: 1  # Run first
+        tags: ['proposed', 'full-model']
+      - name: 'baseline'
+        priority: 2
+        tags: ['ablation', 'baseline']
+      - name: 'bam_only'
+        priority: 2
+        tags: ['ablation', 'attention-only']
+      - name: 'kan_only'
+        priority: 2
+        tags: ['ablation', 'kan-only']
+      - name: 'no_bam'
+        priority: 2
+        tags: ['ablation', 'no-bam']
+      - name: 'no_kan'
+        priority: 2
+        tags: ['ablation', 'no-kan']
+  
+  # Baseline comparisons (SOTA methods)
+  baseline_comparisons:
+    dataset: 'hepar'
+    epochs: 30
+    batch_size: 16
+    seeds: [42, 123, 456]
+    models:
+      - name: 'simclr'
+        priority: 3
+        tags: ['baseline-ssl', 'contrastive']
+      - name: 'byol'
+        priority: 3
+        tags: ['baseline-ssl', 'self-supervised']
+      - name: 'vae'
+        priority: 3
+        tags: ['baseline', 'generative']
+      - name: 'single_ae'
+        priority: 3
+        tags: ['baseline', 'single-ae']
+  
+  # Sensitivity analysis (subset for speed)
+  sensitivity_analysis:
+    dataset: 'hepar'
+    epochs: 10
+    batch_size: 8
+    seeds: [42]
+    models:
+      - name: 'dae_kan_attention'
+        priority: 4
+        tags: ['sensitivity']
+    # Additional parameters for sensitivity
+    hyperparameters:
+      latent_dim: [64, 128, 256]
+      n_clusters: [3, 5, 7]
+  
+  # Quick test (1 epoch, fast validation)
+  quick_test:
+    dataset: 'hepar'
+    epochs: 1
+    batch_size: 8
+    seeds: [42]
+    models:
+      - name: 'dae_kan_attention'
+        priority: 1
+    fast_mode: true
+
+# ============================================================================
+# CUSTOM EXPERIMENT DEFINITIONS
+# ============================================================================
+# Define custom experiment sets here
+custom_experiments:
+  # Example: Run only proposed method with all seeds
+  proposed_only:
+    - model_name: 'dae_kan_attention'
+      dataset: 'hepar'
+      seeds: [42, 123, 456, 789, 1011]
+      epochs: 30
+      batch_size: 8
+      priority: 1
+  
+  # Example: Compare specific variants
+  comparison_ablation:
+    - model_name: 'dae_kan_attention'
+      dataset: 'hepar'
+      seeds: [42, 123, 456]
+      epochs: 30
+      priority: 1
+    - model_name: 'no_kan'
+      dataset: 'hepar'
+      seeds: [42, 123, 456]
+      epochs: 30
+      priority: 2
+    - model_name: 'no_bam'
+      dataset: 'hepar'
+      seeds: [42, 123, 456]
+      epochs: 30
+      priority: 2
+
+# ============================================================================
+# SCHEDULING STRATEGIES
+# ============================================================================
+scheduling:
+  # Strategy for assigning experiments to GPUs
+  # Options: 'round_robin', 'priority', 'memory_aware'
+  strategy: 'priority'
+  
+  # Priority scheduling settings
+  priority:
+    # Run higher priority experiments first
+    respect_priority: true
+    # Group experiments by priority level
+    group_by_priority: true
+  
+  # Memory-aware scheduling settings
+  memory_aware:
+    # Check GPU memory before assigning
+    check_memory: true
+    # Minimum free memory required (GB)
+    min_free_memory: 4
+
+# ============================================================================
+# NOTIFICATION SETTINGS
+# ============================================================================
+notifications:
+  # Send notification when all experiments complete
+  on_completion: false
+  
+  # Send notification on failure
+  on_failure: true
+  
+  # Notification methods (email, slack, discord - configure separately)
+  methods: []
+  
+  # Webhook URL (optional)
+  webhook_url: null
+
+# ============================================================================
+# RESOURCE LIMITS
+# ============================================================================
+resources:
+  # CPU cores per experiment
+  cpu_cores: 4
+  
+  # RAM per experiment (GB)
+  ram_gb: 16
+  
+  # Disk space warning threshold (GB)
+  disk_warning_gb: 50
+  
+  # Network bandwidth limit (Mbps, null = unlimited)
+  bandwidth_limit: null
+
+# ============================================================================
+# EXAMPLE USAGE
+# ============================================================================
+# 
+# Run main experiments:
+#   python parallel_train.py --config config/parallel_config.yaml --preset main_experiments
+#
+# Run custom experiment set:
+#   python parallel_train.py --config config/parallel_config.yaml --custom proposed_only
+#
+# Run with specific GPUs:
+#   python parallel_train.py --config config/parallel_config.yaml --gpus 0 1 --preset main_experiments
+#
+# ============================================================================
