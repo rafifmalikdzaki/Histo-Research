@@ -1,0 +1,266 @@
+# Weights & Biases Configuration
+# This file defines the standard W&B settings for all DAE-KAN experiments
+
+# ============================================================================
+# WORKSPACE SETTINGS
+# ============================================================================
+wandb:
+  # Your W&B entity (team/organization username)
+  # Replace with your actual W&B username or team name
+  entity: "PLACEHOLDER_REPLACE_WITH_YOUR_USERNAME"
+  
+  # Main project name for all DAE-KAN experiments
+  project: "dae-kan-liver-histopathology"
+  
+  # Project description (shown on W&B dashboard)
+  description: |
+    Attention-Enhanced Dual Autoencoder with KAN for Liver Histopathological Image Clustering
+    
+    This project contains experiments for the peer review revision of:
+    "An Attention-Enhanced Dual Autoencoder Clustering for Liver Histopathological Images"
+    
+    Manuscript ID: 252387151
+    Journal: Computer Methods in Biomechanics and Biomedical Engineering: Imaging & Visualization
+
+# ============================================================================
+# STANDARD TAGS
+# ============================================================================
+# These tags are applied to ALL experiments for easy filtering
+default_tags:
+  - "liver-histopathology"
+  - "clustering"
+  - "dae-kan"
+  - "peer-review-revision-2026"
+  - "manuscript-252387151"
+
+# Model-specific tags (automatically added based on model_name)
+model_tags:
+  dae_kan_attention:
+    - "proposed-method"
+    - "full-model"
+    - "kan+bam+eca"
+  baseline:
+    - "baseline"
+    - "no-kan"
+    - "no-bam"
+    - "ablation"
+  bam_only:
+    - "ablation"
+    - "bam-only"
+    - "attention-only"
+  kan_only:
+    - "ablation"
+    - "kan-only"
+    - "no-attention"
+  no_bam:
+    - "ablation"
+    - "no-bam"
+  no_kan:
+    - "ablation"
+    - "no-kan"
+  no_eka:
+    - "ablation"
+    - "no-eka"
+  simclr:
+    - "baseline-ssl"
+    - "simclr"
+    - "contrastive"
+  byol:
+    - "baseline-ssl"
+    - "byol"
+    - "self-supervised"
+  vae:
+    - "baseline"
+    - "vae"
+    - "generative"
+  single_ae:
+    - "baseline"
+    - "single-ae"
+    - "ablation"
+
+# ============================================================================
+# EXPERIMENT GROUPS
+# ============================================================================
+# Groups organize runs in the W&B dashboard
+# Format: group_id: "display_name"
+groups:
+  main_experiments: "01_Main_Experiments"
+  ablation_variants: "02_Ablation_Variants"
+  baseline_comparisons: "03_Baseline_Comparisons"
+  sensitivity_analysis: "04_Sensitivity_Analysis"
+  cross_domain: "05_Cross_Domain_Transfer"
+  profiling: "06_Runtime_Profiling"
+  interpretability: "07_Interpretability"
+  statistical_analysis: "08_Statistical_Analysis"
+
+# Model to group mapping
+model_to_group:
+  dae_kan_attention: "main_experiments"
+  baseline: "ablation_variants"
+  bam_only: "ablation_variants"
+  kan_only: "ablation_variants"
+  no_bam: "ablation_variants"
+  no_kan: "ablation_variants"
+  no_eka: "ablation_variants"
+  simclr: "baseline_comparisons"
+  byol: "baseline_comparisons"
+  vae: "baseline_comparisons"
+  single_ae: "baseline_comparisons"
+
+# ============================================================================
+# METRIC NAMING CONVENTIONS
+# ============================================================================
+# Use namespaces to organize metrics in W&B panels
+metric_namespaces:
+  training: "train"
+  validation: "val"
+  test: "test"
+  clustering: "clustering"
+  attention: "attention"
+  interpretability: "interpretability"
+  profiling: "profiling"
+  statistical: "stats"
+
+# Standard metric names (use these exact names for consistency)
+standard_metrics:
+  # Training metrics
+  train_loss: "train/loss"
+  train_mse: "train/mse"
+  train_ssim: "train/ssim"
+  train_reconstruction_error: "train/reconstruction_error"
+  train_learning_rate: "train/learning_rate"
+  
+  # Validation metrics
+  val_loss: "val/loss"
+  val_mse: "val/mse"
+  val_ssim: "val/ssim"
+  
+  # Clustering metrics (internal)
+  clustering_silhouette: "clustering/silhouette_score"
+  clustering_davies_bouldin: "clustering/davies_bouldin_index"
+  clustering_calinski_harabasz: "clustering/calinski_harabasz_score"
+  clustering_xie_beni: "clustering/xie_beni_index"
+  
+  # Clustering metrics (external, when labels available)
+  clustering_ami: "clustering/adjusted_mutual_info"
+  clustering_ari: "clustering/adjusted_rand_index"
+  clustering_nmi: "clustering/normalized_mutual_info"
+  
+  # Clustering stability
+  clustering_bootstrap_std: "clustering/bootstrap_stability_std"
+  clustering_bootstrap_mean: "clustering/bootstrap_stability_mean"
+  
+  # Attention metrics
+  attention_entropy: "attention/entropy"
+  attention_sparsity: "attention/sparsity"
+  attention_mean: "attention/mean"
+  attention_std: "attention/std"
+  attention_concentration: "attention/concentration_top10"
+  
+  # Interpretability metrics
+  interpretability_activation_sparsity: "interpretability/activation_sparsity"
+  interpretability_reconstruction_mse: "interpretability/reconstruction_mse"
+  interpretability_reconstruction_ssim: "interpretability/reconstruction_ssim"
+  interpretability_reconstruction_psnr: "interpretability/reconstruction_psnr"
+  
+  # Profiling metrics
+  profiling_inference_time: "profiling/inference_time_ms"
+  profiling_training_time: "profiling/training_time_per_epoch_s"
+  profiling_gpu_memory: "profiling/gpu_memory_allocated_mb"
+  profiling_peak_memory: "profiling/peak_gpu_memory_mb"
+  profiling_params: "profiling/num_parameters_millions"
+  profiling_macs: "profiling/macs_giga"
+  
+  # Statistical metrics
+  stats_p_value: "stats/p_value_wilcoxon"
+  stats_effect_size: "stats/cohens_d"
+  stats_significant: "stats/is_significant"
+
+# ============================================================================
+# LOGGING FREQUENCIES
+# ============================================================================
+log_freq:
+  # How often to log different types of data (in batches)
+  metrics: 10          # Log scalar metrics every N batches
+  images: 100          # Log images every N batches
+  tables: 500          # Log tables every N batches
+  histograms: 200      # Log histograms every N batches
+  attention_maps: 200  # Log attention maps every N batches
+  reconstructions: 100 # Log reconstructions every N batches
+
+# ============================================================================
+# RUN NAMING CONVENTION
+# ============================================================================
+# Format: {model}_{dataset}_seed{seed}_{additional_info}
+run_name_format: "{model}_{dataset}_seed{seed}"
+
+# Examples:
+# - dae_kan_attention_hepar_seed42
+# - baseline_pannuke_seed123
+# - simclr_hepar_seed42_baseline
+
+# ============================================================================
+# VISUALIZATION SETTINGS
+# ============================================================================
+visualizations:
+  # Default image settings
+  image_format: "png"
+  image_dpi: 150
+  
+  # What to log
+  log_reconstructions: true
+  log_attention_maps: true
+  log_clustering_plots: true
+  log_umap_projections: true
+  log_metric_plots: true
+  
+  # When to log
+  log_first_batch: true       # Log visualizations from first batch
+  log_every_n_epochs: 5       # Log visualizations every N epochs
+  log_final_epoch: true       # Always log final epoch visualizations
+
+# ============================================================================
+# ALERT SETTINGS
+# ============================================================================
+alerts:
+  # Send email notifications for these events
+  on_run_failure: false
+  on_nan_loss: true
+  on_oom: true
+  
+  # Metric thresholds for alerts
+  thresholds:
+    train_loss_max: 10.0      # Alert if loss exceeds this
+    gpu_memory_max_gb: 22     # Alert if GPU memory > 22GB (on 24GB GPU)
+
+# ============================================================================
+# REPORT SETTINGS
+# ============================================================================
+reports:
+  # Auto-generate W&B reports
+  enabled: true
+  
+  # Report sections to include
+  sections:
+    - "training_curves"
+    - "clustering_comparison"
+    - "ablation_study"
+    - "statistical_analysis"
+  
+  # Share report with collaborators
+  share_with: []  # Add W&B usernames here
+
+# ============================================================================
+# API SETTINGS
+# ============================================================================
+api:
+  # W&B API settings
+  timeout: 30         # API request timeout (seconds)
+  retries: 3          # Number of retries on failure
+  
+  # Offline mode (for debugging)
+  offline: false
+  
+  # Sync settings
+  sync_tensorboard: false
+  sync_keras: false
