@@ -155,12 +155,7 @@ class AnalysisEnabledMainModel(pl.LightningModule):
                         output_tensor=decoded,
                         phase="train"
                     )
-
-                    # Log visualization to W&B
-                    if hasattr(self, 'logger') and self.logger is not None:
-                        self.logger.experiment.log({
-                            f'train/batch_visualization_{batch_idx}': wandb.Image(viz_path)
-                        })
+                    # Note: W&B logging is handled by AutoAnalyzer.create_batch_visualization()
 
                     # Save metrics
                     self.auto_analyzer.save_metrics()
@@ -231,19 +226,15 @@ class AnalysisEnabledMainModel(pl.LightningModule):
                     if 'attention_' in metric_name and isinstance(value, (int, float)):
                         self.log(f"val/{metric_name}", value, on_step=True, on_epoch=False, sync_dist=False)
 
-                # Create visualization for validation
-                viz_path = self.auto_analyzer.create_batch_visualization(
-                    batch_idx=batch_idx,
-                    input_tensor=x,
-                    output_tensor=decoded,
-                    phase="val"
-                )
-
-                # Log visualization to W&B
-                if hasattr(self, 'logger') and self.logger is not None:
-                    self.logger.experiment.log({
-                        f'val/batch_visualization_{batch_idx}': wandb.Image(viz_path)
-                    })
+                # Create visualization for validation (first batch only to avoid excessive logging)
+                if batch_idx == 0:
+                    viz_path = self.auto_analyzer.create_batch_visualization(
+                        batch_idx=batch_idx,
+                        input_tensor=x,
+                        output_tensor=decoded,
+                        phase="val"
+                    )
+                    # Note: W&B logging is handled by AutoAnalyzer.create_batch_visualization()
 
                 print(f"✓ Validation analysis completed for batch {batch_idx}")
 

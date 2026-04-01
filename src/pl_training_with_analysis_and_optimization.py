@@ -341,20 +341,16 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                     if 'attention_' in metric_name and isinstance(value, (int, float)):
                         self.log(f"val/{metric_name}", value, on_step=True, on_epoch=False, sync_dist=False)
 
-                # Create visualization for validation
-                viz_path = self.auto_analyzer.create_batch_visualization(
-                    batch_idx=batch_idx,
-                    input_tensor=x,
-                    output_tensor=decoded,
-                    phase="val",
-                    global_step=self.global_step
-                )
-
-                # Log visualization to W&B (also logged by AutoAnalyzer now)
-                if hasattr(self, 'logger') and self.logger is not None:
-                    self.logger.experiment.log({
-                        f'val/batch_visualization_{self.global_step}': wandb.Image(viz_path)
-                    })
+                # Create visualization for validation (first batch only to avoid excessive logging)
+                if batch_idx == 0:
+                    viz_path = self.auto_analyzer.create_batch_visualization(
+                        batch_idx=batch_idx,
+                        input_tensor=x,
+                        output_tensor=decoded,
+                        phase="val",
+                        global_step=self.global_step
+                    )
+                    # Note: W&B logging is handled by AutoAnalyzer.create_batch_visualization()
 
                 # Save individual components for validation (first 3 batches only)
                 if batch_idx < 3:
