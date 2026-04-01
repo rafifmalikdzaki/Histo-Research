@@ -226,12 +226,7 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                         phase="train",
                         global_step=self.global_step
                     )
-
-                    # Log visualization to W&B (also logged by AutoAnalyzer now)
-                    if hasattr(self, 'logger') and self.logger is not None:
-                        self.logger.experiment.log({
-                            f'train/batch_visualization_{self.global_step}': wandb.Image(viz_path)
-                        })
+                    # Note: W&B logging is handled by AutoAnalyzer.create_batch_visualization()
 
                 # Save detailed individual components every N batches (less frequent)
                 if batch_idx % self.attention_components_frequency == 0 and batch_idx > 0:
