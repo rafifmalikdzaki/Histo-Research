@@ -19,7 +19,8 @@ warnings.filterwarnings('ignore')
 
 import numpy as np
 import pandas as pd
-from sklearn.cluster import KMeans, BisectingKMeans, GaussianMixture
+from sklearn.cluster import KMeans, BisectingKMeans
+from sklearn.mixture import GaussianMixture
 from sklearn.metrics import (
     silhouette_score,
     davies_bouldin_score,

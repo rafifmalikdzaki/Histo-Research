@@ -22,7 +22,7 @@ FIGURES_DIR="figures"
 TABLES_DIR="tables"
 
 # Parse command line arguments
-while [[ $# -gt 0 ]]; do
+while [ $# -gt 0 ]; do
     case $1 in
         --base-dir)
             BASE_DIR="$2"
