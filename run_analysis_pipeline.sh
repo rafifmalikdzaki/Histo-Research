@@ -20,6 +20,8 @@ METHODS="bisecting_kmeans kmeans gmm"
 OUTPUT_DIR="results"
 FIGURES_DIR="figures"
 TABLES_DIR="tables"
+EXCLUDE=""
+PRESERVE_FROM=""
 
 # Parse command line arguments
 while [ $# -gt 0 ]; do
@@ -32,6 +34,14 @@ while [ $# -gt 0 ]; do
             K="$2"
             shift 2
             ;;
+        --exclude)
+            EXCLUDE="$2"
+            shift 2
+            ;;
+        --preserve-from)
+            PRESERVE_FROM="$2"
+            shift 2
+            ;;
         --output-dir)
             OUTPUT_DIR="$2"
             shift 2
@@ -42,6 +52,8 @@ while [ $# -gt 0 ]; do
             echo "Options:"
             echo "  --base-dir DIR      Base directory with experiments (default: auto_analysis)"
             echo "  --k NUM             Number of clusters (default: 6)"
+            echo "  --exclude \"STRS\"    Exclude models from retraining (e.g. \"no_eka no_kan\")"
+            echo "  --preserve-from FILE Existing raw metrics CSV to preserve excluded models from"
             echo "  --output-dir DIR    Output directory (default: results)"
             echo "  --help              Show this help message"
             exit 0
@@ -58,6 +70,8 @@ echo "🚀 CLUSTERING STATISTICAL ANALYSIS PIPELINE"
 echo "===================================================================================================="
 echo "Base directory: $BASE_DIR"
 echo "Number of clusters (k): $K"
+echo "Exclude from retraining: $EXCLUDE"
+echo "Preserve results from: $PRESERVE_FROM"
 echo "Output directory: $OUTPUT_DIR"
 echo "===================================================================================================="
 echo ""
@@ -71,11 +85,23 @@ mkdir -p "$TABLES_DIR"
 echo "===================================================================================================="
 echo "📊 STEP 1: Running Clustering Analysis"
 echo "===================================================================================================="
+EXCLUDE_CMD=""
+if [ ! -z "$EXCLUDE" ]; then
+    EXCLUDE_CMD="--model-exclude $EXCLUDE"
+fi
+
+PRESERVE_CMD=""
+if [ ! -z "$PRESERVE_FROM" ]; then
+    PRESERVE_CMD="--preserve-from $PRESERVE_FROM"
+fi
+
 python run_clustering_analysis.py \
     --base-dir "$BASE_DIR" \
     --k $K \
     --methods $METHODS \
-    --output "$OUTPUT_DIR/raw_clustering_metrics.csv"
+    --output "$OUTPUT_DIR/raw_clustering_metrics.csv" \
+    $EXCLUDE_CMD \
+    $PRESERVE_CMD
 
 if [ $? -ne 0 ]; then
     echo "❌ Step 1 failed!"

@@ -28,7 +28,7 @@ from sklearn.metrics import (
 )
 
 
-def find_experiment_dirs(base_dir: str, model_filter: Optional[str] = None) -> List[Path]:
+def find_experiment_dirs(base_dir: str, model_filter: Optional[str] = None, model_exclude: Optional[List[str]] = None) -> List[Path]:
     """Find all experiment directories."""
     base_path = Path(base_dir)
     if not base_path.exists():
@@ -39,6 +39,10 @@ def find_experiment_dirs(base_dir: str, model_filter: Optional[str] = None) -> L
     
     if model_filter:
         exp_dirs = [d for d in exp_dirs if model_filter in d.name.lower()]
+    
+    if model_exclude:
+        for exclude_str in model_exclude:
+            exp_dirs = [d for d in exp_dirs if exclude_str.lower() not in d.name.lower()]
     
     return sorted(exp_dirs)
 
@@ -222,6 +226,10 @@ def main():
                         help='Base directory containing experiment directories')
     parser.add_argument('--model-filter', type=str, default=None,
                         help='Filter experiments by model name (optional)')
+    parser.add_argument('--model-exclude', type=str, nargs='+', default=None,
+                        help='Exclude models containing these strings from retraining (optional)')
+    parser.add_argument('--preserve-from', type=str, default=None,
+                        help='Preserve results for excluded models from this CSV file (optional)')
     parser.add_argument('--k', type=int, default=6,
                         help='Number of clusters (default: 6)')
     parser.add_argument('--methods', type=str, nargs='+',
@@ -237,10 +245,28 @@ def main():
     print("="*80)
     print(f"Base directory: {args.base_dir}")
     print(f"Number of clusters (k): {args.k}")
+    if args.model_exclude:
+        print(f"Excluding from retraining: {', '.join(args.model_exclude)}")
+    if args.preserve_from:
+        print(f"Preserving results from: {args.preserve_from}")
     print(f"Clustering methods: {', '.join(args.methods)}")
     print("="*80)
     
-    exp_dirs = find_experiment_dirs(args.base_dir, args.model_filter)
+    # Load existing results if preservation is requested
+    preserve_df = None
+    if args.preserve_from:
+        preserve_path = Path(args.preserve_from)
+        if preserve_path.exists():
+            try:
+                preserve_df = pd.read_csv(preserve_path)
+                print(f"✓ Loaded {len(preserve_df)} records for preservation")
+            except Exception as e:
+                print(f"⚠️  Error loading preservation file: {e}")
+        else:
+            print(f"⚠️  Preservation file not found: {args.preserve_from}")
+
+    # Find ALL experiment dirs first (don't filter yet, we handle exclusion during processing)
+    exp_dirs = find_experiment_dirs(args.base_dir, args.model_filter, None)
     
     if not exp_dirs:
         print("\n❌ No experiment directories found!")
@@ -250,6 +276,32 @@ def main():
     
     all_results = []
     for i, exp_dir in enumerate(exp_dirs, 1):
+        model_name = extract_model_name(exp_dir.name)
+        
+        # Check if we should exclude this model from retraining
+        should_exclude = False
+        if args.model_exclude:
+            for exclude_str in args.model_exclude:
+                if exclude_str.lower() in model_name.lower():
+                    should_exclude = True
+                    break
+        
+        if should_exclude:
+            if preserve_df is not None:
+                # Try to find existing results for this experiment dir
+                matches = preserve_df[preserve_df['experiment_dir'].str.contains(exp_dir.name)]
+                
+                if not matches.empty:
+                    print(f"\n[{i}/{len(exp_dirs)}] Preserving existing results for: {exp_dir.name}")
+                    all_results.extend(matches.to_dict('records'))
+                    continue
+                else:
+                    print(f"\n[{i}/{len(exp_dirs)}] No existing results found for: {exp_dir.name} - Skipping")
+                    continue
+            else:
+                print(f"\n[{i}/{len(exp_dirs)}] Skipping excluded model: {exp_dir.name}")
+                continue
+
         print(f"\n[{i}/{len(exp_dirs)}] Processing: {exp_dir.name}")
         results = process_experiment(exp_dir, args.k, args.methods)
         all_results.extend(results)
