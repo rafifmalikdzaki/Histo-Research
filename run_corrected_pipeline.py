@@ -44,6 +44,15 @@ from typing import List, Optional
 AUTO_DIR = Path("auto_analysis")
 PYTHON = sys.executable  # use the same interpreter (the venv) for children
 
+# The training script accepts the short dataset alias (hepar/pannuke) and maps it
+# internally, but extract_embeddings_for_clustering.py / histodata resolve images
+# by the FULL dataset name. Map here so extraction finds data/processed/<Full>/tiles.
+DATASET_FULL = {"hepar": "HeparUnifiedPNG", "pannuke": "PANnuke"}
+
+
+def _full_dataset(name: str) -> str:
+    return DATASET_FULL.get(name.lower(), name)
+
 
 def _run(cmd: List[str], log: Path, env: Optional[dict] = None) -> int:
     log.parent.mkdir(parents=True, exist_ok=True)
@@ -117,7 +126,7 @@ def extract_one(model: str, run_dir: Path, dataset: str, batch_size: int,
         return False
     cmd = [
         PYTHON, "extract_embeddings_for_clustering.py",
-        "--model-name", model, "--dataset", dataset, "--phase", "test",
+        "--model-name", model, "--dataset", _full_dataset(dataset), "--phase", "test",
         "--checkpoint", str(ckpt), "--output-dir", str(run_dir),
         "--batch-size", str(batch_size),
     ]
