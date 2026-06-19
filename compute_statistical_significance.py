@@ -182,6 +182,68 @@ def run_statistical_tests(
     return pd.DataFrame(test_results)
 
 
+def holm_bonferroni(pvals: np.ndarray, alpha: float = 0.05) -> Tuple[np.ndarray, np.ndarray]:
+    """Holm-Bonferroni step-down correction.
+
+    Returns (adjusted_pvalues, reject_at_alpha). NaN p-values are left as NaN
+    and treated as non-significant. The adjustment is enforced monotone (a less
+    significant raw p cannot get a smaller adjusted p than a more significant
+    one) and clipped to [0, 1], matching the statsmodels convention so output
+    is directly comparable.
+    """
+    pvals = np.asarray(pvals, dtype=float)
+    n_total = len(pvals)
+    finite = ~np.isnan(pvals)
+    m = int(finite.sum())
+    adj = np.full(n_total, np.nan)
+    reject = np.zeros(n_total, dtype=bool)
+    if m == 0:
+        return adj, reject
+
+    idx = np.where(finite)[0]
+    order = idx[np.argsort(pvals[idx])]
+    sorted_p = pvals[order]
+    raw = sorted_p * (m - np.arange(m))
+    # Enforce monotone non-decreasing on the sorted-by-significance sequence.
+    monotone = np.maximum.accumulate(raw)
+    adj[order] = np.clip(monotone, 0.0, 1.0)
+    reject[order] = adj[order] < alpha
+    return adj, reject
+
+
+def apply_holm_correction(tests_df: pd.DataFrame, alpha: float = 0.05) -> pd.DataFrame:
+    """Add Holm-Bonferroni-corrected p-values to a tests dataframe.
+
+    The correction family is one clustering method (so reviewers see the
+    multiple-comparison correction *within* each clustering algorithm). t-test
+    and Wilcoxon p-values are corrected independently. Adds:
+        ttest_pvalue_holm, ttest_significant_holm,
+        wilcoxon_pvalue_holm, wilcoxon_significant_holm,
+        n_comparisons   (size of the correction family for this row)
+    """
+    if len(tests_df) == 0:
+        return tests_df
+    df = tests_df.copy()
+    for col in ("ttest_pvalue_holm", "wilcoxon_pvalue_holm"):
+        df[col] = np.nan
+    for col in ("ttest_significant_holm", "wilcoxon_significant_holm"):
+        df[col] = False
+    df["n_comparisons"] = 0
+
+    for method, sub in df.groupby("clustering_method"):
+        idx = sub.index.to_numpy()
+        n = len(idx)
+        df.loc[idx, "n_comparisons"] = n
+        t_adj, t_sig = holm_bonferroni(sub["ttest_pvalue"].to_numpy(), alpha=alpha)
+        w_adj, w_sig = holm_bonferroni(sub["wilcoxon_pvalue"].to_numpy(), alpha=alpha)
+        df.loc[idx, "ttest_pvalue_holm"] = t_adj
+        df.loc[idx, "ttest_significant_holm"] = t_sig
+        df.loc[idx, "wilcoxon_pvalue_holm"] = w_adj
+        df.loc[idx, "wilcoxon_significant_holm"] = w_sig
+
+    return df
+
+
 def format_mean_std(mean: float, std: float, decimals: int = 4) -> str:
     """Format mean ± std as string."""
     if np.isnan(mean) or np.isnan(std):
@@ -253,41 +315,38 @@ def generate_statistical_tests_table(tests_df: pd.DataFrame) -> str:
         lines.append(f"Clustering Method: {method.upper()}")
         lines.append(f"{'='*120}")
         
-        header = f"{'Model':<25} {'Metric':<20} {'Test':<12} {'Statistic':>10} {'p-value':>10} {'Significant?':>12} {'Effect Size':>12}"
+        header = (f"{'Model':<25} {'Metric':<20} {'Test':<12} "
+                  f"{'Statistic':>10} {'p-raw':>10} {'p-Holm':>10} "
+                  f"{'Sig(Holm)':>10} {'Effect d':>10}")
         lines.append(header)
         lines.append("-"*120)
-        
+
         for _, row in method_tests.iterrows():
             model = row['model'][:24]
             metric = row['metric'][:19]
-            
+            eff = row['cohens_d']
+            eff_str = f"{eff:>10.4f}" if not np.isnan(eff) else f"{'N/A':>10}"
+
+            def _fmt(stat, p_raw, p_holm, sig_holm):
+                stat_str = f"{stat:>10.4f}" if not np.isnan(stat) else f"{'N/A':>10}"
+                p_raw_str = f"{p_raw:>10.4f}" if not np.isnan(p_raw) else f"{'N/A':>10}"
+                p_holm_str = f"{p_holm:>10.4f}" if not np.isnan(p_holm) else f"{'N/A':>10}"
+                sig_str = ("✓ YES" if sig_holm else "✗ NO").rjust(10)
+                return stat_str, p_raw_str, p_holm_str, sig_str
+
             if not np.isnan(row['ttest_pvalue']):
-                test_type = "t-test"
-                stat = row['ttest_statistic']
-                pval = row['ttest_pvalue']
-                sig = row['ttest_significant']
-                eff = row['cohens_d']
-                
-                stat_str = f"{stat:>10.4f}"
-                p_str = f"{pval:>10.4f}"
-                sig_str = "✓ YES" if sig else "✗ NO"
-                eff_str = f"{eff:>12.4f}" if not np.isnan(eff) else f"{'N/A':>12}"
-                
-                lines.append(f"{model:<25} {metric:<20} {test_type:<12} {stat_str} {p_str} {sig_str} {eff_str}")
-            
+                ts = _fmt(row['ttest_statistic'], row['ttest_pvalue'],
+                          row.get('ttest_pvalue_holm', np.nan),
+                          row.get('ttest_significant_holm', False))
+                lines.append(f"{model:<25} {metric:<20} {'t-test':<12} "
+                             f"{ts[0]} {ts[1]} {ts[2]} {ts[3]} {eff_str}")
+
             if not np.isnan(row['wilcoxon_pvalue']):
-                test_type = "Wilcoxon"
-                stat = row['wilcoxon_statistic']
-                pval = row['wilcoxon_pvalue']
-                sig = row['wilcoxon_significant']
-                eff = row['cohens_d']
-                
-                stat_str = f"{stat:>10.4f}"
-                p_str = f"{pval:>10.4f}"
-                sig_str = "✓ YES" if sig else "✗ NO"
-                eff_str = f"{eff:>12.4f}" if not np.isnan(eff) else f"{'N/A':>12}"
-                
-                lines.append(f"{model:<25} {metric:<20} {test_type:<12} {stat_str} {p_str} {sig_str} {eff_str}")
+                ws = _fmt(row['wilcoxon_statistic'], row['wilcoxon_pvalue'],
+                          row.get('wilcoxon_pvalue_holm', np.nan),
+                          row.get('wilcoxon_significant_holm', False))
+                lines.append(f"{model:<25} {metric:<20} {'Wilcoxon':<12} "
+                             f"{ws[0]} {ws[1]} {ws[2]} {ws[3]} {eff_str}")
     
     lines.append("\n" + "="*120)
     lines.append("INTERPRETATION:")
@@ -355,7 +414,11 @@ def main():
                         help='Output statistical tests CSV file')
     parser.add_argument('--latex-output', type=str, default='tables/table_clustering.tex',
                         help='Output LaTeX table file')
-    
+    parser.add_argument('--alpha', type=float, default=0.05,
+                        help='Family-wise significance threshold for Holm-Bonferroni '
+                             '(default: 0.05). Correction family = all models × metrics '
+                             'within one clustering method.')
+
     args = parser.parse_args()
     
     print("\n" + "="*80)
@@ -376,7 +439,17 @@ def main():
     
     print(f"\n🧪 Running statistical tests (baseline: {args.baseline})...")
     tests_df = run_statistical_tests(summary_df, args.baseline)
-    
+    if len(tests_df) > 0:
+        tests_df = apply_holm_correction(tests_df, alpha=args.alpha)
+        n_sig_raw_t = int((tests_df['ttest_pvalue'] < args.alpha).sum())
+        n_sig_holm_t = int(tests_df['ttest_significant_holm'].sum())
+        n_sig_raw_w = int((tests_df['wilcoxon_pvalue'] < args.alpha).sum())
+        n_sig_holm_w = int(tests_df['wilcoxon_significant_holm'].sum())
+        print(f"  t-test:   {n_sig_holm_t}/{len(tests_df)} significant after Holm "
+              f"(uncorrected: {n_sig_raw_t}/{len(tests_df)})")
+        print(f"  Wilcoxon: {n_sig_holm_w}/{len(tests_df)} significant after Holm "
+              f"(uncorrected: {n_sig_raw_w}/{len(tests_df)})")
+
     if len(tests_df) > 0:
         tests_output_path = Path(args.tests_output)
         tests_output_path.parent.mkdir(parents=True, exist_ok=True)

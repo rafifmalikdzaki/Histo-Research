@@ -21,11 +21,20 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans, BisectingKMeans
 from sklearn.mixture import GaussianMixture
-from sklearn.metrics import (
-    silhouette_score,
-    davies_bouldin_score,
-    calinski_harabasz_score
+
+sys.path.insert(0, str(Path(__file__).parent / "src"))
+from clustering_metrics import (  # noqa: E402
+    normalize_embeddings, internal_metrics, external_metrics, NORMALIZERS,
 )
+
+# Categorical metadata columns used for external validation, and the namespace
+# prefix each is reported under. Magnification is included as a CONFOUND check:
+# we want clusters to track treatment_group/diet, NOT magnification.
+EXTERNAL_LABEL_COLUMNS = {
+    "treatment_group": "treatment_",
+    "diet": "diet_",
+    "magnification": "mag_",
+}
 
 
 def find_experiment_dirs(base_dir: str, model_filter: Optional[str] = None, model_exclude: Optional[List[str]] = None) -> List[Path]:
@@ -78,36 +87,60 @@ def extract_seed(dir_name: str) -> Optional[int]:
     return None
 
 
-def load_embeddings(exp_dir: Path) -> Optional[np.ndarray]:
-    """Load embeddings from experiment directory."""
+def load_embeddings(exp_dir: Path) -> Optional[Tuple[np.ndarray, Optional[pd.DataFrame]]]:
+    """Load embeddings (and aligned biology metadata, if present) from an
+    experiment directory.
+
+    Prefers a `test_embeddings.npy` (the held-out, leak-free split) over
+    `train_embeddings.npy`; falls back to the first .npy otherwise. When a
+    sibling `<phase>_metadata.csv` exists with the same row count, it is returned
+    so external validation against treatment_group/diet/magnification is possible.
+    """
     embeddings_dir = exp_dir / 'embeddings'
-    
     if not embeddings_dir.exists():
         print(f"⚠️  No embeddings directory in {exp_dir.name}")
         return None
-    
-    # Look for embedding files
+
     npy_files = list(embeddings_dir.glob('*.npy'))
-    
     if not npy_files:
-        # Try epoch subdirectories
         epoch_dirs = [d for d in embeddings_dir.iterdir() if d.is_dir() and d.name.startswith('epoch_')]
         if epoch_dirs:
             epoch_dirs.sort()
             npy_files = list(epoch_dirs[-1].glob('*.npy'))
-    
     if not npy_files:
         print(f"⚠️  No .npy files found in {exp_dir.name}")
         return None
-    
-    # Load the first embedding file found
+
+    # Deterministic preference: test > val > train > first.
+    def _rank(p: Path) -> int:
+        n = p.name.lower()
+        return 0 if 'test' in n else 1 if 'val' in n else 2 if 'train' in n else 3
+    npy_files.sort(key=lambda p: (_rank(p), p.name))
+    emb_file = npy_files[0]
+
     try:
-        embeddings = np.load(npy_files[0])
-        print(f"✓ Loaded embeddings from {exp_dir.name}: shape={embeddings.shape}")
-        return embeddings
+        embeddings = np.load(emb_file)
     except Exception as e:
         print(f"⚠️  Error loading embeddings from {exp_dir.name}: {e}")
         return None
+
+    meta = None
+    meta_file = emb_file.with_name(emb_file.name.replace('embeddings', 'metadata').replace('.npy', '.csv'))
+    if meta_file.exists():
+        try:
+            m = pd.read_csv(meta_file)
+            if len(m) == len(embeddings):
+                meta = m
+            else:
+                print(f"⚠️  metadata/embeddings length mismatch in {exp_dir.name} "
+                      f"({len(m)} vs {len(embeddings)}); skipping external validation")
+        except Exception as e:
+            print(f"⚠️  Error loading metadata for {exp_dir.name}: {e}")
+
+    has_bio = meta is not None and any(c in meta.columns for c in EXTERNAL_LABEL_COLUMNS)
+    print(f"✓ Loaded {emb_file.name} from {exp_dir.name}: shape={embeddings.shape}"
+          f"{' (+biology metadata)' if has_bio else ''}")
+    return embeddings, meta
 
 
 def run_clustering(embeddings: np.ndarray, method: str, k: int = 6) -> np.ndarray:
@@ -125,97 +158,61 @@ def run_clustering(embeddings: np.ndarray, method: str, k: int = 6) -> np.ndarra
     return labels
 
 
-def compute_clustering_metrics(embeddings: np.ndarray, labels: np.ndarray) -> Dict[str, float]:
-    """Compute clustering validation metrics."""
-    metrics = {}
-    
-    try:
-        metrics['silhouette'] = silhouette_score(embeddings, labels)
-    except Exception as e:
-        metrics['silhouette'] = np.nan
-    
-    try:
-        metrics['davies_bouldin'] = davies_bouldin_score(embeddings, labels)
-    except Exception as e:
-        metrics['davies_bouldin'] = np.nan
-    
-    try:
-        metrics['calinski_harabasz'] = calinski_harabasz_score(embeddings, labels)
-    except Exception as e:
-        metrics['calinski_harabasz'] = np.nan
-    
-    try:
-        metrics['xie_beni'] = compute_xie_beni(embeddings, labels)
-    except Exception as e:
-        metrics['xie_beni'] = np.nan
-    
-    return metrics
+def process_experiment(exp_dir: Path, k: int, methods: List[str],
+                        normalize: str = "standardize_l2") -> List[Dict]:
+    """Process a single experiment directory.
 
-
-def compute_xie_beni(embeddings: np.ndarray, labels: np.ndarray) -> float:
-    """Compute Xie-Beni clustering validity index."""
-    k = len(np.unique(labels))
-    n = len(embeddings)
-    
-    centers = np.array([embeddings[labels == i].mean(axis=0) for i in range(k)])
-    
-    compactness = 0
-    for i in range(k):
-        cluster_points = embeddings[labels == i]
-        compactness += np.sum(np.linalg.norm(cluster_points - centers[i], axis=1) ** 2)
-    compactness /= n
-    
-    separation = float('inf')
-    for i in range(k):
-        for j in range(i + 1, k):
-            dist = np.linalg.norm(centers[i] - centers[j]) ** 2
-            separation = min(separation, dist)
-    
-    if separation == 0:
-        return float('inf')
-    
-    return compactness / separation
-
-
-def process_experiment(exp_dir: Path, k: int, methods: List[str]) -> List[Dict]:
-    """Process a single experiment directory."""
+    Embeddings are normalized (see clustering_metrics.normalize_embeddings) before
+    clustering. Internal validity indices are robust to degenerate clusters; when
+    biology metadata is available, external validity (AMI/ARI/NMI/purity) is
+    computed against treatment_group, diet, and magnification (confound check).
+    """
     model_name = extract_model_name(exp_dir.name)
     seed = extract_seed(exp_dir.name)
-    
+
     if model_name == 'unknown':
         print(f"⚠️  Skipping unknown model: {exp_dir.name}")
         return []
-    
-    embeddings = load_embeddings(exp_dir)
-    if embeddings is None:
+
+    loaded = load_embeddings(exp_dir)
+    if loaded is None:
         return []
-    
+    raw_embeddings, meta = loaded
+
+    embeddings = normalize_embeddings(raw_embeddings, normalize)
+
     results = []
     for method in methods:
-        print(f"  Running {method} clustering (k={k})...")
-        
+        print(f"  Running {method} clustering (k={k}, normalize={normalize})...")
         try:
             labels = run_clustering(embeddings, method, k)
-            metrics = compute_clustering_metrics(embeddings, labels)
-            
+            metrics = internal_metrics(embeddings, labels)
+
             result = {
                 'model': model_name,
                 'seed': seed if seed is not None else -1,
                 'experiment_dir': str(exp_dir),
                 'clustering_method': method,
+                'normalize': normalize,
                 'k': k,
                 'n_samples': len(embeddings),
                 'embedding_dim': embeddings.shape[1] if len(embeddings.shape) > 1 else 1,
             }
             result.update(metrics)
+
+            # External validation against any available biology columns.
+            if meta is not None:
+                for col, prefix in EXTERNAL_LABEL_COLUMNS.items():
+                    if col in meta.columns and meta[col].notna().any():
+                        result.update(external_metrics(meta[col].to_numpy(), labels, prefix=prefix))
+
             results.append(result)
-            
-            print(f"    ✓ Silhouette: {metrics.get('silhouette', 'N/A'):.4f}")
-            
+            sil = metrics.get('silhouette', float('nan'))
+            print(f"    ✓ Silhouette: {sil:.4f}" if sil == sil else "    ✓ Silhouette: NaN")
         except Exception as e:
             print(f"  ❌ Error in {method}: {e}")
             continue
-    
+
     return results
 
 
@@ -237,7 +234,10 @@ def main():
                         help='Clustering methods to use')
     parser.add_argument('--output', type=str, default='results/raw_clustering_metrics.csv',
                         help='Output CSV file path')
-    
+    parser.add_argument('--normalize', type=str, default='standardize_l2',
+                        choices=list(NORMALIZERS),
+                        help='Embedding normalization before clustering (default: standardize_l2)')
+
     args = parser.parse_args()
     
     print("\n" + "="*80)
@@ -303,7 +303,7 @@ def main():
                 continue
 
         print(f"\n[{i}/{len(exp_dirs)}] Processing: {exp_dir.name}")
-        results = process_experiment(exp_dir, args.k, args.methods)
+        results = process_experiment(exp_dir, args.k, args.methods, args.normalize)
         all_results.extend(results)
     
     if not all_results:
