@@ -81,7 +81,18 @@ model:
 clustering:
   # Number of clusters to discover
   n_clusters: 5
-  
+
+  # Clustering-objective training (DEC/IDEC). Opt-in: cluster_weight=0 keeps
+  # training as pure reconstruction (unchanged). >0 enables the latent
+  # projection head + DEC KL loss. CLI flags on
+  # pl_training_with_analysis_and_optimization.py override these:
+  #   --cluster-weight --recon-weight --latent-dim --n-clusters
+  #   --cluster-warmup-epochs
+  objective:
+    cluster_weight: 0.0        # weight of DEC KL term (0 = off)
+    recon_weight: 1.0          # weight of reconstruction MSE
+    cluster_warmup_epochs: 5   # recon-only epochs before clustering loss starts
+
   # Clustering algorithms to evaluate
   algorithms:
     - "kmeans"

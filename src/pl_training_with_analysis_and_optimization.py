@@ -7,6 +7,7 @@ from pytorch_lightning.callbacks import (
     LearningRateMonitor,
 )
 from models.factory import get_model
+from clustering_objective import LatentProjectionHead, DECClusteringLoss
 from histodata import *
 from torch.utils.data import Dataset, DataLoader
 import wandb
@@ -31,10 +32,46 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
     """Optimized Lightning module with better memory management and GPU utilization"""
 
     def __init__(self, model_name: str = "dae_kan_attention", batch_size=8, analysis_frequency=100,
-                 attention_components_frequency=400, max_embeddings_to_store=1000, embeddings_per_epoch=500):
+                 attention_components_frequency=400, max_embeddings_to_store=1000, embeddings_per_epoch=500,
+                 cluster_weight: float = 0.0, recon_weight: float = 1.0,
+                 latent_dim: int = 128, n_clusters: int = 5,
+                 cluster_warmup_epochs: int = 5, learning_rate: float = 0.002):
         super(OptimizedMainModelWithAnalysis, self).__init__()
+        self.model_name = model_name
         self.model = get_model(model_name)()
         self.batch_size = batch_size
+        self.learning_rate = learning_rate
+
+        # --- Clustering objective (opt-in; default OFF keeps training identical) ---
+        # With cluster_weight == 0 nothing below is built and the loss is pure MSE,
+        # so existing reconstruction-only runs are byte-for-byte unchanged.
+        self.cluster_weight = float(cluster_weight)
+        self.recon_weight = float(recon_weight)
+        self.latent_dim = int(latent_dim)
+        self.n_clusters = int(n_clusters)
+        self.cluster_warmup_epochs = int(cluster_warmup_epochs)
+        self.latent_head = None
+        self.dec_loss = None
+        self._latent_pool = []          # rolling buffer for KMeans centroid init
+        self._latent_pool_cap = 2000
+        if self.cluster_weight > 0:
+            self.latent_head = LatentProjectionHead(self.latent_dim)
+            self.dec_loss = DECClusteringLoss(self.n_clusters, self.latent_dim)
+            # Eagerly build the projection head's Linear so its parameters are
+            # registered BEFORE configure_optimizers() runs (a lazily-built layer
+            # would be silently excluded from the optimizer).
+            try:
+                self.model.eval()
+                with torch.no_grad():
+                    _, _, z = self.model(torch.zeros(1, 3, 128, 128))
+                self.latent_head(z)  # triggers lazy _build with the real z dim
+                self.model.train()
+                print(f"✓ Clustering objective ON: latent_dim={self.latent_dim}, "
+                      f"n_clusters={self.n_clusters}, cluster_weight={self.cluster_weight}, "
+                      f"warmup={self.cluster_warmup_epochs} epochs")
+            except Exception as e:
+                print(f"⚠ Could not pre-build latent head ({e}); will build lazily. "
+                      f"Ensure optimizer includes latent_head params.")
         self.analysis_frequency = analysis_frequency  # Run full analysis every N batches
         self.attention_components_frequency = attention_components_frequency  # Save detailed components every N batches
         self.max_embeddings_to_store = max_embeddings_to_store  # Limit embedding storage
@@ -163,6 +200,30 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
         # Compute loss
         mse_loss = nn.functional.mse_loss(x, decoded)
 
+        # --- Composite clustering objective (opt-in) ---------------------------
+        # loss = recon_weight * MSE + cluster_weight * DEC-KL (after a warmup,
+        # once centroids are KMeans-initialised from a pool of latents).
+        loss = self.recon_weight * mse_loss
+        cluster_loss_val = 0.0
+        if self.cluster_weight > 0 and self.latent_head is not None:
+            latent = self.latent_head(z)
+            # Maintain a rolling latent pool for centroid initialisation.
+            if not self.dec_loss.initialised:
+                self._latent_pool.append(latent.detach().cpu())
+                pooled = sum(t.size(0) for t in self._latent_pool)
+                if pooled > self._latent_pool_cap:
+                    self._latent_pool.pop(0)
+                past_warmup = self.current_epoch >= self.cluster_warmup_epochs
+                enough = pooled >= max(10 * self.n_clusters, self.n_clusters + 1)
+                if past_warmup and enough:
+                    self.dec_loss.init_centers(torch.cat(self._latent_pool, 0))
+                    self._latent_pool = []
+                    print(f"✓ DEC centroids initialised at epoch {self.current_epoch}")
+            if self.dec_loss.initialised:
+                cluster_loss = self.dec_loss(latent)
+                loss = loss + self.cluster_weight * cluster_loss
+                cluster_loss_val = cluster_loss.item()
+
         # Store basic metrics
         self.batch_losses.append(mse_loss.item())
 
@@ -189,6 +250,9 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
 
         # Log basic metrics
         self.log("train/loss", mse_loss, on_epoch=True, prog_bar=True, sync_dist=True)
+        if self.cluster_weight > 0:
+            self.log("train/total_loss", loss, on_epoch=True, prog_bar=True, sync_dist=True)
+            self.log("train/cluster_loss", cluster_loss_val, on_epoch=True, sync_dist=True)
         self.log("train/ssim", ssim_score, on_epoch=True, prog_bar=True, sync_dist=True)
         self.log("train/reconstruction_error", reconstruction_error.mean(), on_epoch=True, sync_dist=True)
 
@@ -276,7 +340,7 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                 # Don't crash training if analysis fails
                 pass
 
-        return mse_loss
+        return loss
 
     def validation_step(self, batch, batch_idx):
         # Track validation time
@@ -423,8 +487,8 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
     def configure_optimizers(self):
         # Use Adam with faster convergence
         optimizer = torch.optim.Adam(
-            self.parameters(),
-            lr=0.002,  # Higher learning rate for faster training
+            self.parameters(),  # includes latent_head + dec_loss centers when enabled
+            lr=self.learning_rate,
             weight_decay=1e-5,
         )
 
@@ -1444,6 +1508,22 @@ if __name__ == '__main__':
     parser.add_argument('--patience', type=int, default=5, help='Patience for early stopping (epochs)')
     parser.add_argument('--fast-mode', action='store_true', help='Fast mode: 1 epoch, minimal analysis, quick training')
 
+    # Clustering objective (opt-in; default OFF == pure reconstruction)
+    parser.add_argument('--cluster-weight', type=float, default=0.0,
+                       help='Weight of the DEC/IDEC clustering loss. 0 (default) = pure '
+                            'reconstruction (unchanged behaviour); >0 enables the latent '
+                            'bottleneck + clustering objective.')
+    parser.add_argument('--recon-weight', type=float, default=1.0,
+                       help='Weight of the reconstruction (MSE) loss term.')
+    parser.add_argument('--latent-dim', type=int, default=128,
+                       help='Projected latent dimension used for clustering (when enabled).')
+    parser.add_argument('--n-clusters', type=int, default=5,
+                       help='Number of clusters for the DEC objective (when enabled).')
+    parser.add_argument('--cluster-warmup-epochs', type=int, default=5,
+                       help='Reconstruction-only warmup before the clustering loss kicks in.')
+    parser.add_argument('--learning-rate', type=float, default=0.002,
+                       help='Adam learning rate (default: 0.002).')
+
     args = parser.parse_args()
 
     # Map dataset names to directory names and update project name
@@ -1656,7 +1736,13 @@ if __name__ == "__main__":
         analysis_frequency=args.analysis_freq,
         attention_components_frequency=args.attention_components_freq,
         max_embeddings_to_store=args.max_embeddings_to_store,
-        embeddings_per_epoch=args.embeddings_per_epoch
+        embeddings_per_epoch=args.embeddings_per_epoch,
+        cluster_weight=args.cluster_weight,
+        recon_weight=args.recon_weight,
+        latent_dim=args.latent_dim,
+        n_clusters=args.n_clusters,
+        cluster_warmup_epochs=args.cluster_warmup_epochs,
+        learning_rate=args.learning_rate,
     )
 
     # Pass ablation configuration to model for local storage
