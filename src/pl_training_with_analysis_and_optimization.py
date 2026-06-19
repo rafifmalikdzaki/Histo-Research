@@ -107,9 +107,15 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
         """Initialize automatic analyzer after model is on correct device"""
         device = self.device
 
-        # Create analysis directory and run ID
+        # Create analysis directory and run ID. In offline / non-wandb modes
+        # `experiment.name` can be a bound method rather than a string, so coerce
+        # and fall back to a timestamped id if it is not a usable string.
         base_analysis_dir = "auto_analysis"
-        run_id = self.logger.experiment.name if hasattr(self, 'logger') and self.logger.experiment else f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        run_id = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        if hasattr(self, 'logger') and getattr(self, 'logger', None) and getattr(self.logger, 'experiment', None):
+            candidate = getattr(self.logger.experiment, 'name', None)
+            if isinstance(candidate, str) and candidate:
+                run_id = candidate
 
         # Prepare experiment configuration for ablation study tracking
         experiment_config = {
@@ -135,10 +141,18 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                 'notes': self.ablation_config.get('notes', '')
             })
 
-        # Add any hyperparameters from logger
+        # Add any hyperparameters from logger. In offline / non-wandb modes
+        # `experiment.config` may be a bound method or a non-mapping; only merge
+        # it when it is actually dict-like, otherwise skip (it is non-essential).
         if hasattr(self, 'logger') and hasattr(self.logger, 'experiment'):
-            if hasattr(self.logger.experiment, 'config'):
-                experiment_config.update(self.logger.experiment.config)
+            cfg = getattr(self.logger.experiment, 'config', None)
+            if isinstance(cfg, dict):
+                experiment_config.update(cfg)
+            elif cfg is not None and hasattr(cfg, 'items') and not callable(cfg):
+                try:
+                    experiment_config.update(dict(cfg))
+                except Exception:
+                    pass
 
         # Initialize automatic analyzer with run ID and config
         self.auto_analyzer = AutomaticAnalyzer(
