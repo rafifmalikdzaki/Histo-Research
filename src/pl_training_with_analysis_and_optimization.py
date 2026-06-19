@@ -276,8 +276,13 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
         if torch.cuda.is_available():
             self.log("train/memory_mb", memory_used, on_epoch=True, prog_bar=False, sync_dist=True)
 
-        # Run automatic analysis every batch
-        if self.auto_analyzer:
+        # Run automatic analysis periodically. Previously this ran on EVERY
+        # batch, which dominated epoch time (~27 min/epoch) and is unnecessary —
+        # embeddings for the paper are re-extracted post-hoc. Gate on
+        # analysis_frequency (and always include batch 0 for a first look).
+        run_analysis = self.auto_analyzer and (
+            batch_idx % max(1, self.analysis_frequency) == 0)
+        if run_analysis:
             try:
                 # Analyze current batch
                 batch_metrics = self.auto_analyzer.analyze_batch(

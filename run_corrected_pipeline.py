@@ -83,12 +83,14 @@ def _find_checkpoint(run_dir: Path) -> Optional[Path]:
 
 def train_one(model: str, seed: int, epochs: int, batch_size: int, dataset: str,
               cluster_weight: float, latent_dim: int, n_clusters: int,
-              warmup: int, logs_dir: Path, env: dict) -> Optional[Path]:
+              warmup: int, logs_dir: Path, env: dict,
+              analysis_freq: int = 200) -> Optional[Path]:
     before = _snapshot_runs()
     cmd = [
         PYTHON, "src/pl_training_with_analysis_and_optimization.py",
         "--model-name", model, "--dataset", dataset, "--seed", str(seed),
         "--max-epochs", str(epochs), "--batch-size", str(batch_size),
+        "--analysis-freq", str(analysis_freq),
     ]
     if cluster_weight > 0:
         cmd += ["--cluster-weight", str(cluster_weight),
@@ -155,6 +157,8 @@ def main() -> int:
     ap.add_argument("--latent-dim", type=int, default=128)
     ap.add_argument("--n-clusters", type=int, default=5)
     ap.add_argument("--cluster-warmup-epochs", type=int, default=5)
+    ap.add_argument("--analysis-freq", type=int, default=200,
+                    help="Run in-training auto-analysis every N batches (higher = faster).")
     ap.add_argument("--skip-train", action="store_true",
                     help="Only run the aggregate eval over existing auto_analysis runs.")
     ap.add_argument("--offline-wandb", action="store_true", default=True,
@@ -180,7 +184,8 @@ def main() -> int:
                 run_dir = train_one(
                     model, seed, args.epochs, args.batch_size, args.dataset,
                     args.cluster_weight, args.latent_dim, args.n_clusters,
-                    args.cluster_warmup_epochs, logs_dir, env)
+                    args.cluster_warmup_epochs, logs_dir, env,
+                    analysis_freq=args.analysis_freq)
                 if run_dir is not None:
                     extract_one(model, run_dir, args.dataset, args.batch_size,
                                 logs_dir, env)
