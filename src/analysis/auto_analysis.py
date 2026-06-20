@@ -237,25 +237,27 @@ class AutomaticAnalyzer:
         # Get the actual DAE_KAN_Attention model (skip the Lightning wrapper)
         actual_model = self.model.model if hasattr(self.model, 'model') else self.model
 
-        # Register hooks for BAM layers
-        bam_layers = [
-            ('bam_384', actual_model.bottleneck.attn1),
-            ('bam_16', actual_model.bottleneck.attn2),
-        ]
-
-        for name, layer in bam_layers:
+        # Register hooks only for modules that exist. Ablation variants drop
+        # whole components (kan_only has no BAM attn, no_kan has no KAN, etc.), so
+        # probe attribute paths defensively rather than assuming the full model.
+        def _maybe(name, getter):
+            try:
+                layer = getter()
+            except AttributeError:
+                return
+            if layer is None:
+                return
             hook = layer.register_forward_hook(create_hook_fn(name))
             self.attention_hooks.append(hook)
 
-        # Register hooks for KAN layers
-        kan_layers = [
-            ('encoder_kan', actual_model.ae_encoder.kan),
-            ('decoder_kan', actual_model.ae_decoder.kan),
-        ]
+        _maybe('bam_384', lambda: actual_model.bottleneck.attn1)
+        _maybe('bam_16', lambda: actual_model.bottleneck.attn2)
+        _maybe('encoder_kan', lambda: actual_model.ae_encoder.kan)
+        _maybe('decoder_kan', lambda: actual_model.ae_decoder.kan)
 
-        for name, layer in kan_layers:
-            hook = layer.register_forward_hook(create_hook_fn(name))
-            self.attention_hooks.append(hook)
+        if not self.attention_hooks:
+            print("ℹ auto_analysis: no BAM/KAN submodules found to hook "
+                  "(expected for some ablation variants).")
 
     def compute_attention_metrics(self, attention_map: np.ndarray) -> Dict[str, float]:
         """Compute comprehensive attention metrics"""
