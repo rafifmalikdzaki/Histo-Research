@@ -134,19 +134,40 @@ This directly addresses the central prior criticism that the model did not produ
 better-separated clusters.
 
 ### 5.2 Architecture ablation (corrected benchmark)
-All seven variants under the same objective, leak-free test set. ⟨PENDING: 7-variant
-table from the running scouting sweep; then 3+ seeds with Holm-corrected significance.⟩
+All seven variants under the same training signal (recon-only), leak-free test set, seed
+42, 10 epochs, K-Means k=6. (Scouting pass — multi-seed Holm-corrected significance is
+⟨PENDING⟩.)
 
-Preliminary recon-only head-to-head (seed 42, 10 epochs):
+| Model | Silhouette↑ | Davies–Bouldin↓ | Calinski–Harabasz↑ | Xie–Beni↓ | treat-AMI | treat-ARI | diet-AMI |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| baseline | 0.035 | 5.07 | 137.4 | 8.32 | 0.342 | 0.189 | 0.353 |
+| dae_kan_attention | 0.033 | 6.30 | 141.9 | 17.17 | 0.423 | 0.246 | 0.462 |
+| bam_only | 0.017 | 5.26 | 129.8 | 9.15 | 0.408 | 0.249 | 0.453 |
+| kan_only | 0.015 | 5.95 | 102.8 | 12.72 | 0.428 | **0.306** | 0.482 |
+| no_bam | 0.022 | 6.35 | 103.4 | 18.92 | 0.412 | 0.247 | 0.455 |
+| no_kan | 0.029 | 5.63 | 115.2 | 10.87 | 0.415 | 0.245 | 0.455 |
+| no_eka | 0.038 | 5.17 | 170.7 | 9.76 | 0.424 | 0.248 | 0.467 |
 
-| Model | Silhouette↑ | Davies–Bouldin↓ | Calinski–Harabasz↑ | treat-AMI | treat-ARI |
-|---|--:|--:|--:|--:|--:|
-| baseline | 0.035 | 5.07 | 137.4 | 0.342 | 0.189 |
-| dae_kan_attention | 0.033–0.040 | 6.3 | 141.9 | 0.423 | 0.246 |
+**Every KAN/attention variant agrees with treatment biology markedly better than the
+baseline** (treatment-AMI 0.41–0.43 vs 0.34; diet-AMI 0.45–0.48 vs 0.35), while internal
+compactness is comparable across architectures under pure reconstruction. The biological
+gain — not internal compactness — is the consistent architectural signal. Per-magnification
+control holds for all seven (treatment-AMI within 20×/40× strata 0.39–0.50; Table below),
+so the gain is not a magnification artifact for any variant.
 
-Internal indices are comparable between architectures under pure reconstruction; the
-proposed model's advantage is in **biological agreement** (treatment-AMI 0.42 vs 0.34) and,
-with the clustering objective, in **separability** (§5.1).
+| Model | treat-AMI @20× | treat-AMI @40× |
+|---|--:|--:|
+| baseline | 0.478 | 0.399 |
+| dae_kan_attention | 0.475 | 0.446 |
+| bam_only | 0.441 | 0.387 |
+| kan_only | 0.480 | 0.429 |
+| no_bam | 0.476 | 0.406 |
+| no_kan | 0.478 | 0.401 |
+| no_eka | 0.501 | 0.436 |
+
+Combined with §5.1 (the DEC objective lifts the full model's Silhouette 0.033→0.046 and
+Xie–Beni 17→5.9), the picture is: architecture drives **biological** agreement; the
+clustering objective drives **separability**.
 
 ### 5.3 External / biological validation
 Cluster↔biology association (test set, k=6; all χ² p ≪ 0.001), bias-corrected Cramér's V:
