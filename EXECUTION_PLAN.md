@@ -1,103 +1,113 @@
-# Execution Plan — corrected experiments (resubmission)
+# Execution Plan — AUTONOMOUS RUNBOOK (resubmission experiments)
 
-_Last updated: 2026-06-20. Owner: автоloop. Paper: CMBBE MS 252387151.R1, due 2026-08-14._
+_Paper: CMBBE MS 252387151.R1, due 2026-08-14. Last updated 2026-06-20._
 
-Plain-language map of what runs, in what order, and the exact commands. Scope per
-user decision: **1-seed scouting first, all 7 variants, let the DEC run finish first.**
+This is a **self-driving runbook**: the autonomous loop reads the "STATE DETECTION"
+rule each tick, finds the first incomplete step whose preconditions are met, and
+executes it — no user prompt needed. Decision rules are pre-committed below.
+**Hard stop / notify gates** mark the few points that need a human (big compute /
+resource commitments). Everything before those runs unattended.
 
-## Current state (as of writing)
+## Pre-committed decisions (do NOT re-ask)
+- Scope: **1-seed scouting, all 7 variants, 10 epochs, recon-only** (cluster_weight 0).
+- Speed flags on every run: `--epoch-viz dump --analysis-freq 200`, `WANDB_MODE=offline`.
+- **One GPU job at a time** (8 GB → OOM otherwise). Never launch training while another trains.
+- Always aggregate over a **scoped symlink dir**, never raw `auto_analysis/` (old leaky runs).
+- Commit after every step; append a dated line to the Notion log.
+- 1-seed = scouting only, never presented as final.
 
-- ✅ Corrected pipeline working end-to-end (leak-free split, biology labels, robust
-  metrics, normalization, external validation, Holm stats, per-magnification control).
-- ✅ Speed: `--epoch-viz dump` → ~14 min/epoch (~2.3 h per 10-epoch run incl. extraction).
-- 🔄 **Running now:** DEC-objective experiment — `dae_kan_attention` + `--cluster-weight 0.5`,
-  seed 42, 10 ep, epoch 3/10 (~2 h left). Holds the GPU.
-- ✅ Already done (reuse, don't rerun): seed-42 / 10-epoch **recon** runs for
-  `baseline` (`auto_analysis/baseline_baseline_20260620_022524`) and
-  `dae_kan_attention` (`auto_analysis/baseline_dae_kan_attention_20260620_045037`),
-  both with `test_embeddings.npy` + `test_metadata.csv`.
+## Timings (measured, GPU to itself)
+- ~5 min/epoch training loop (AMP+TF32 on; instrumentation + epoch-viz gated).
+- ~1–1.3 h per 10-epoch run incl. test extraction.
+- 5-variant scouting ≈ ~5–6 h. 3-seed×7×10ep ≈ ~1 day. (earlier 24-min/2.3-h figures were
+  inflated by concurrent CPU load — disregard.)
 
-## Step-by-step
+## Known run dirs (reuse, don't rerun)
+- baseline recon, seed42, 10ep: `auto_analysis/baseline_baseline_20260620_022524` (has test sidecar)
+- dae_kan recon, seed42, 10ep: `auto_analysis/baseline_dae_kan_attention_20260620_045037` (has test sidecar)
+- dae_kan + DEC objective, seed42, 10ep: `auto_analysis/<dec_run>` (in progress)
 
-### Step 0 — wait for the DEC run (in progress)
-Let the objective run finish (do not start another GPU job concurrently — 8 GB OOM).
+---
 
-### Step 1 — evaluate the DEC-objective run (objective ON vs OFF)
-When the DEC run finishes, extract its test embeddings and compare to the recon-only
-dae_kan to see whether the clustering loss improved separation.
-```bash
-python extract_embeddings_for_clustering.py --model-name dae_kan_attention \
+## STATE DETECTION (run each loop tick)
+1. If a `pl_training`/`run_corrected_pipeline` process is alive → a job is running; **wait**
+   (check progress, reschedule). Do not launch anything.
+2. Else find the first step below whose **Done-check** is false and **Precondition** is true; do its **Action**.
+3. If all steps through the STOP gate are done → push-notify the gate and end the loop.
+
+---
+
+## STEP 1 — Evaluate DEC-objective run
+- **Precondition:** DEC training finished (no live process; `<dec_run>/checkpoints/last.ckpt` exists).
+- **Done-check:** `<dec_run>/embeddings/test_metadata.csv` exists AND results recorded.
+- **Action:**
+  ```bash
+  python extract_embeddings_for_clustering.py --model-name dae_kan_attention \
     --dataset HeparUnifiedPNG --phase test \
-    --checkpoint auto_analysis/<dec_run>/checkpoints/last.ckpt \
-    --output-dir auto_analysis/<dec_run> --batch-size 32
-```
-Then internal + external metrics on it; record objective-ON vs objective-OFF in
-`results/` and `REBUTTAL_R2.md` R2.1.
+    --checkpoint <dec_run>/checkpoints/last.ckpt --output-dir <dec_run> --batch-size 32
+  ```
+  Then compute internal+external (KMeans, k=6, standardize_l2) on `<dec_run>` and on the
+  recon dae_kan run; write `results/objective_ablation.csv` (objective ON vs OFF). Commit.
+  Update `REBUTTAL_R2.md` R2.1 with the ON-vs-OFF deltas + Notion line.
 
-### Step 2 — scouting sweep: the 5 missing variants (1 seed, recon)
-baseline + dae_kan already exist, so only run the other five. recon-only
-(cluster_weight 0) so all 7 share the same objective for a fair architecture ablation.
-```bash
-python run_corrected_pipeline.py \
+## STEP 2 — Scouting sweep: 5 missing variants
+- **Precondition:** Step 1 done; GPU free.
+- **Done-check:** all 5 dirs (`bam_only`,`kan_only`,`no_bam`,`no_kan`,`no_eka` seed42) have `test_embeddings.npy`.
+- **Action (single command, sequential, auto-extracts each):**
+  ```bash
+  WANDB_MODE=offline python run_corrected_pipeline.py \
     --models bam_only kan_only no_bam no_kan no_eka \
     --seeds 42 --epochs 10 --batch-size 8 --dataset hepar --k 6 \
     --epoch-viz dump --analysis-freq 200
-```
-≈ 5 runs × ~2.3 h ≈ **~12 h**. Each step: train → locate run dir → extract test
-embeddings + biology metadata sidecar.
+  ```
+  Launch in background; on first launch, **measure and record the true epoch time** here.
+  (Ignore the pipeline's built-in aggregate — Step 3 does a clean scoped one.)
 
-### Step 3 — clean scoped aggregate over the 7 recon runs
-The pipeline's built-in aggregate scans ALL of `auto_analysis/` (includes old leaky
-runs) → pollution. Instead symlink only the 7 corrected recon runs into a scratch dir
-and aggregate that:
-```bash
-mkdir -p /tmp/scout7 && ln -s <each of the 7 run dirs> /tmp/scout7/<name>_seed42
-python run_clustering_analysis.py --base-dir /tmp/scout7 --k 6 \
+## STEP 3 — Clean scoped aggregate over the 7 recon runs
+- **Precondition:** Step 2 done.
+- **Done-check:** `results/scout_raw_metrics.csv` exists with 7 models.
+- **Action:** symlink the 7 recon run dirs into `/tmp/scout7/<name>_seed42`, then:
+  ```bash
+  python run_clustering_analysis.py --base-dir /tmp/scout7 --k 6 \
     --normalize standardize_l2 --output results/scout_raw_metrics.csv
-# (1 seed → skip Holm stats; report the metric table directly)
-```
-Produces the scouting table: internal (Silhouette/DBI/CHI/Xie-Beni) + external
-(treatment/diet AMI/ARI, magnification confound) for all 7 variants.
+  ```
+  (1 seed → no Holm stats; report the table.) Commit `results/scout_raw_metrics.csv`.
 
-### Step 4 — per-magnification confound control on the 7
+## STEP 4 — Per-magnification confound control (7 variants)
+- **Precondition:** Step 3 done. **Done-check:** `results/per_magnification_<name>.csv` for all 7.
+- **Action:** loop `per_magnification_analysis.py` over the 7 run dirs. Commit.
+
+## STEP 5 — Epoch-viz regeneration (figures)
+- **Precondition:** Step 3 done. **Done-check:** `epoch_metric_evolution_*.png` in the dae_kan run.
+- **Action:** `python regenerate_epoch_viz.py --run-dir <dae_kan run> --phase val` (+ baseline). Commit.
+
+## STEP 6 — Update rebuttal + scouting summary
+- **Precondition:** Steps 3–4 done.
+- **Action:** fill `REBUTTAL_R2.md` with the 7-variant scouting table + confound results;
+  write `results/SCOUTING_SUMMARY.md` ranking variants by treatment-AMI (with baseline as
+  reference). Commit + Notion line.
+
+## 🛑 STOP GATE A — before the full multi-seed sweep
+- After Step 6, **do not** auto-launch the 3-seed×7×30-epoch sweep (≈1 day GPU) or SSL
+  baselines — these are large resource commits and a human decision.
+- **Action:** PushNotification with the scouting verdict + recommended contenders, then
+  **end the loop**. Wait for the user to choose seeds/epochs/contenders.
+
+## STEP 7 (post-approval only) — full sweep
 ```bash
-for r in <7 run dirs>; do
-  python per_magnification_analysis.py \
-    --embeddings $r/embeddings/test_embeddings.npy \
-    --metadata   $r/embeddings/test_metadata.csv \
-    --output results/per_magnification_<name>.csv
-done
+python run_corrected_pipeline.py --models <approved> \
+  --seeds 42 123 456 --epochs 30 --epoch-viz dump   # or 5 seeds if approved
 ```
+then clean scoped aggregate → `compute_statistical_significance.py` (Holm) → tables.
 
-### Step 5 — regenerate epoch-viz from the dumps (no GPU)
-`--epoch-viz dump` saved per-epoch embeddings but skipped rendering. Rebuild the
-evolution plots offline for any run worth a figure:
-```bash
-python regenerate_epoch_viz.py --run-dir auto_analysis/<run> --phase val
-```
+## STEP 8 (post-approval) — SSL baselines + paper artifacts
+`baselines/` SSL × 3 seeds through the same eval path; then
+`bash run_analysis_pipeline.sh` for `tables/` + `figures/`; finalize `REBUTTAL_R2.md`.
 
-### Step 6 — decide contenders, then full seeds (later, heavier HW)
-From the scouting table pick the variants that actually matter, then run **3 seeds**
-(the significance floor) — ideally on a stronger GPU:
-```bash
-python run_corrected_pipeline.py --models <all 7> \
-    --seeds 42 123 456 789 1011 --epochs 30 --epoch-viz dump
-# 3-seed minimum: --seeds 42 123 456
-```
-This is the run that produces the Holm-corrected significance table the reviewers want.
+---
 
-### Step 7 — SSL baselines (R2)
-SimCLR / BYOL / VAE / single-AE × 3 seeds through the same corrected eval path
-(`baselines/`), then fold into the comparison table.
-
-### Step 8 — paper artifacts + rebuttal finalization
-```bash
-bash run_analysis_pipeline.sh --base-dir <scoped dir> --k 6   # tables + figures
-```
-Fill remaining `REBUTTAL_R2.md` ⟨PENDING⟩ cells; regenerate `tables/`, `figures/`.
-
-## Notes / guardrails
-- One GPU job at a time (8 GB). Don't launch Step 2 until Step 0/1 frees the GPU.
-- Always aggregate over a **scoped** dir, never raw `auto_analysis/` (old leaky runs).
-- 1-seed results are **scouting only** — not submittable; final table needs ≥3 seeds.
-- `WANDB_MODE=offline` for unattended runs.
+## Loop bookkeeping
+- Heartbeat: while a job runs, reschedule ~1800 s; when idle and a step is ready, act immediately.
+- On any step failure: capture the log tail, record the error in this file under the step,
+  push-notify, and stop (do not thrash).
+- Three idle ticks with nothing actionable and no running job → push-notify + end loop.
