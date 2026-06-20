@@ -1,0 +1,4 @@
+variable,cramers_v,chi2_pvalue,dof,is_confound_check
+treatment_group,0.4699171113594216,0.0,30,False
+diet,0.9116770080727005,0.0,5,False
+magnification,0.7993900432491368,0.0,10,True

@@ -53,16 +53,39 @@ Two root causes, now fixed:
    `latent_dim`** unit-norm vector, so the contribution of KAN/BAM/ECA is measured in a
    controlled latent space.
 
-Re-evaluated on the corrected, leak-free, treatment-validated benchmark
-(5 seeds × {K-Means, Bisecting K-Means, GMM}):
+Re-evaluated on the corrected, leak-free benchmark (held-out test set: 4,536 tiles
+/ 42 specimens, specimen-grouped split; standardize+L2 normalized embeddings;
+k = 6). **Preliminary** numbers below are a single seed (42), 10 epochs, pure
+reconstruction; the full 5-seed / 30-epoch table is in progress (see Status note).
 
-- Internal validity (mean ± std, Holm-corrected p vs baseline): ⟨PENDING⟩
-- External validity (AMI/ARI vs treatment group): ⟨PENDING⟩
+Internal validity (test set, by clustering method):
 
-**Honest framing:** if the proposed model does not win an internal index after these
-fixes, we will not claim it does. The contribution is re-positioned around
-(i) agreement with treatment biology, (ii) interpretability via attention, and
-(iii) robustness across seeds/folds — each reported with significance and effect size.
+| Model | Method | Silhouette ↑ | Davies–Bouldin ↓ | Calinski–Harabasz ↑ | Xie–Beni ↓ |
+|-------|--------|-------------:|-----------------:|--------------------:|-----------:|
+| baseline | KMeans | 0.035 | 5.07 | 137.4 | 8.32 |
+| baseline | GMM | 0.035 | 5.07 | 137.4 | 8.21 |
+| dae_kan_attention | KMeans | 0.033 | 6.30 | 141.9 | 17.17 |
+| dae_kan_attention | GMM | **0.040** | 6.25 | 140.8 | 14.42 |
+
+Internal indices remain **comparable** (proposed marginally higher Silhouette/CHI
+under GMM, marginally worse Davies–Bouldin/Xie–Beni). We do **not** claim an
+internal-validity win.
+
+External validity vs **treatment group** (the meaningful, previously-impossible test):
+
+| Model | Method | AMI ↑ | ARI ↑ |
+|-------|--------|------:|------:|
+| baseline | KMeans | 0.342 | 0.189 |
+| dae_kan_attention | KMeans | **0.423** | **0.246** |
+| dae_kan_attention | GMM | 0.395 | 0.255 |
+
+The proposed model's latent space agrees **more strongly with treatment biology**
+than the baseline (AMI 0.42 vs 0.34, consistent across all three clustering
+algorithms) — non-trivial agreement (the old dummy-label AMI was ~0).
+
+**Honest framing:** the contribution is re-positioned around external/biological
+agreement rather than internal compactness, where the proposed model does not win.
+See R2.4 for an important confound caveat that tempers this claim.
 
 ### R2.2 — "No external or biological validation; clustering is not shown to be meaningful."
 
@@ -77,8 +100,23 @@ of cluster assignments against **treatment group** and **diet**
 interpretation we added `cluster_biology_analysis.py`: contingency tables, χ² tests,
 bias-corrected **Cramér's V**, and per-cluster treatment **enrichment** (observed/expected
 odds). A board-certified pathologist will review per-cluster montages (centroid-nearest +
-random tiles) and complete the structured scoring template the script exports. Results:
-⟨PENDING⟩.
+random tiles, exported to `pathologist_review/`) and complete the structured scoring
+template the script exports.
+
+Preliminary cluster↔biology association (test set, k = 6; all χ² p < 1e-300):
+
+| Variable | baseline (Cramér's V) | dae_kan_attention (Cramér's V) |
+|----------|----------------------:|-------------------------------:|
+| treatment_group | 0.448 | 0.470 |
+| diet (ND/HFD)   | 0.839 | 0.912 |
+| magnification (confound) | 0.758 | 0.799 |
+
+Clusters are **significantly** associated with treatment group and diet (not the
+near-zero of the old dummy labels), and the proposed model is consistently higher
+than baseline on every biological variable. The strong diet association (V ≈ 0.84–0.91)
+is the clearest treatment-induced-phenotype signal. **However**, see R2.4 — the
+magnification association is also high and must be controlled before claiming the
+clusters are purely biological.
 
 ### R2.3 — "Train/test split leaks data: tiles from one specimen appear in both."
 
@@ -93,8 +131,24 @@ this with a **specimen-level grouped split, stratified by treatment group**
 
 Magnification is now (a) a stratification variable in the split and (b) an explicit
 **confound check**: we report Cramér's V of clusters vs magnification alongside vs
-treatment, and require clusters to track treatment more strongly than magnification
-(`cluster_biology_analysis.py`). Result: ⟨PENDING⟩.
+treatment (`cluster_biology_analysis.py`).
+
+**Honest finding (important):** in the preliminary run the magnification association
+is **higher than** the treatment-group association (baseline V_mag 0.758 > V_treat
+0.448; proposed V_mag 0.799 > V_treat 0.470). I.e. the unsupervised clusters are
+driven by imaging magnification *more* than by treatment arm. This confirms the
+reviewer's concern was well-founded and means a raw "treatment phenotype" claim is
+**not yet supported**. We therefore:
+
+1. report this confound transparently rather than hide it;
+2. add magnification as a stratification variable so it is balanced across splits;
+3. (planned) report **per-magnification** clustering — clustering within each
+   magnification stratum so treatment signal is measured with magnification held
+   fixed — and/or magnification-invariant features. The diet signal (V ≈ 0.84–0.91),
+   being far above the magnification level, is the most defensible biological claim.
+
+This is exactly the kind of rigorous control the resubmission requires; the
+manuscript's biological claims will be scoped to what survives the confound check.
 
 ### R2.5 — "Reported metrics are unreliable (infinities / zeros)."
 
