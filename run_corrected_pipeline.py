@@ -93,13 +93,13 @@ def _find_checkpoint(run_dir: Path) -> Optional[Path]:
 def train_one(model: str, seed: int, epochs: int, batch_size: int, dataset: str,
               cluster_weight: float, latent_dim: int, n_clusters: int,
               warmup: int, logs_dir: Path, env: dict,
-              analysis_freq: int = 200) -> Optional[Path]:
+              analysis_freq: int = 200, epoch_viz: str = "dump") -> Optional[Path]:
     before = _snapshot_runs()
     cmd = [
         PYTHON, "src/pl_training_with_analysis_and_optimization.py",
         "--model-name", model, "--dataset", dataset, "--seed", str(seed),
         "--max-epochs", str(epochs), "--batch-size", str(batch_size),
-        "--analysis-freq", str(analysis_freq),
+        "--analysis-freq", str(analysis_freq), "--epoch-viz", epoch_viz,
     ]
     if cluster_weight > 0:
         cmd += ["--cluster-weight", str(cluster_weight),
@@ -168,6 +168,9 @@ def main() -> int:
     ap.add_argument("--cluster-warmup-epochs", type=int, default=5)
     ap.add_argument("--analysis-freq", type=int, default=200,
                     help="Run in-training auto-analysis every N batches (higher = faster).")
+    ap.add_argument("--epoch-viz", default="dump", choices=["render", "dump", "off"],
+                    help="Per-epoch embedding viz mode (default dump: save data, skip "
+                         "rendering for ~40%% faster epochs; rebuild with regenerate_epoch_viz.py).")
     ap.add_argument("--skip-train", action="store_true",
                     help="Only run the aggregate eval over existing auto_analysis runs.")
     ap.add_argument("--offline-wandb", action="store_true", default=True,
@@ -194,7 +197,7 @@ def main() -> int:
                     model, seed, args.epochs, args.batch_size, args.dataset,
                     args.cluster_weight, args.latent_dim, args.n_clusters,
                     args.cluster_warmup_epochs, logs_dir, env,
-                    analysis_freq=args.analysis_freq)
+                    analysis_freq=args.analysis_freq, epoch_viz=args.epoch_viz)
                 if run_dir is not None:
                     extract_one(model, run_dir, args.dataset, args.batch_size,
                                 logs_dir, env)

@@ -35,12 +35,21 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                  attention_components_frequency=400, max_embeddings_to_store=1000, embeddings_per_epoch=500,
                  cluster_weight: float = 0.0, recon_weight: float = 1.0,
                  latent_dim: int = 128, n_clusters: int = 5,
-                 cluster_warmup_epochs: int = 5, learning_rate: float = 0.002):
+                 cluster_warmup_epochs: int = 5, learning_rate: float = 0.002,
+                 epoch_viz: str = "render"):
         super(OptimizedMainModelWithAnalysis, self).__init__()
         self.model_name = model_name
         self.model = get_model(model_name)()
         self.batch_size = batch_size
         self.learning_rate = learning_rate
+        # Epoch-embedding visualisation mode (a major training-time cost):
+        #   render -> save per-epoch .npy + metadata AND render t-SNE/UMAP/clustering
+        #             plots every epoch (original behaviour).
+        #   dump   -> save per-epoch .npy + metadata only; skip rendering. The dumps
+        #             carry all information; regenerate plots offline with
+        #             regenerate_epoch_viz.py (no GPU). ~40% faster epochs.
+        #   off    -> no per-epoch embedding dumps or rendering at all.
+        self.epoch_viz = epoch_viz if epoch_viz in ("render", "dump", "off") else "render"
 
         # --- Clustering objective (opt-in; default OFF keeps training identical) ---
         # With cluster_weight == 0 nothing below is built and the loss is pure MSE,
@@ -943,15 +952,17 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
     def _finalize_embedding_analysis(self):
         """Save remaining embeddings and create comprehensive embedding analysis"""
 
-        # Save any remaining embeddings
-        for phase in ['train', 'val']:
-            self._save_embeddings_to_disk(phase)
+        # Save any remaining embeddings (cheap; always do unless fully off).
+        if self.epoch_viz != "off":
+            for phase in ['train', 'val']:
+                self._save_embeddings_to_disk(phase)
 
-        # Create embedding analysis and visualizations
-        self._create_embedding_analysis()
-
-        # Create epoch evolution analysis
-        self._create_epoch_evolution_analysis()
+        # Rendering (t-SNE/UMAP, evolution plots) only in 'render' mode. In 'dump'
+        # mode the saved .npy + metadata are sufficient to regenerate everything
+        # offline with regenerate_epoch_viz.py.
+        if self.epoch_viz == "render":
+            self._create_embedding_analysis()
+            self._create_epoch_evolution_analysis()
 
     def _create_embedding_analysis(self):
         """Create comprehensive embedding analysis with visualizations"""
@@ -1027,14 +1038,23 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
 
         self._training_epoch += 1  # Increment epoch counter
 
-        # Save embeddings collected during this epoch
+        if self.epoch_viz == "off":
+            for phase in ['train', 'val']:
+                self.epoch_embeddings_collection[phase] = {
+                    'embeddings': [], 'metadata': [], 'epoch_indices': []
+                }
+            return
+
+        # Save embeddings collected during this epoch (cheap: just .npy + csv).
         for phase in ['train', 'val']:
             if self.epoch_embeddings_collection[phase]['embeddings']:
                 embeddings_file, metadata_file = self._save_epoch_embeddings(phase)
                 print(f"✅ Epoch {self._training_epoch-1}: Saved {len(self.epoch_embeddings_collection[phase]['embeddings'])} {phase} embeddings")
-                
-                # Run analysis on epoch embeddings
-                if embeddings_file and metadata_file:
+
+                # Render per-epoch visualisations only in 'render' mode; in 'dump'
+                # mode the .npy + metadata above are enough to rebuild them offline
+                # via regenerate_epoch_viz.py (skips the expensive t-SNE/UMAP/PNG work).
+                if self.epoch_viz == "render" and embeddings_file and metadata_file:
                     self._run_epoch_embedding_analysis(phase, embeddings_file, metadata_file)
 
         # Clear epoch collection for next epoch
@@ -1542,6 +1562,12 @@ if __name__ == '__main__':
                        help='Reconstruction-only warmup before the clustering loss kicks in.')
     parser.add_argument('--learning-rate', type=float, default=0.002,
                        help='Adam learning rate (default: 0.002).')
+    parser.add_argument('--epoch-viz', type=str, default='render',
+                       choices=['render', 'dump', 'off'],
+                       help="Per-epoch embedding viz: 'render' (save .npy+meta AND plot, "
+                            "original), 'dump' (save .npy+meta only, ~40%% faster epochs; "
+                            "rebuild plots offline with regenerate_epoch_viz.py), "
+                            "'off' (nothing). Default: render.")
 
     args = parser.parse_args()
 
@@ -1762,6 +1788,7 @@ if __name__ == "__main__":
         n_clusters=args.n_clusters,
         cluster_warmup_epochs=args.cluster_warmup_epochs,
         learning_rate=args.learning_rate,
+        epoch_viz=args.epoch_viz,
     )
 
     # Pass ablation configuration to model for local storage
