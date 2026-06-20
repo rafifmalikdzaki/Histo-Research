@@ -202,17 +202,20 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
         x, _ = batch
         x = x.to(self.device, non_blocking=True)
 
-        # Track memory before forward pass
-        if torch.cuda.is_available():
+        # Per-batch timing/SSIM/memory is instrumentation only and each
+        # torch.cuda.synchronize() serialises the GPU pipeline (kills throughput).
+        # Do it only on "profile" batches; the model/loss path runs every batch
+        # unchanged, so results are identical — only timing-log resolution drops.
+        profile = (batch_idx % max(1, self.analysis_frequency) == 0)
+
+        memory_before = 0
+        if profile and torch.cuda.is_available():
             torch.cuda.synchronize()
             memory_before = torch.cuda.memory_allocated(self.device)
-        else:
-            memory_before = 0
 
-        # Track inference time
         inference_start_time = time.perf_counter()
         encoded, decoded, z = self.forward(x)
-        if torch.cuda.is_available():
+        if profile and torch.cuda.is_available():
             torch.cuda.synchronize()
 
         # Collect embeddings for epoch-end analysis (sample from batches)
@@ -247,43 +250,36 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule):
                 loss = loss + self.cluster_weight * cluster_loss
                 cluster_loss_val = cluster_loss.item()
 
-        # Store basic metrics
-        self.batch_losses.append(mse_loss.item())
-
-        # Calculate additional metrics
-        ssim_score = self.calculate_ssim(x, decoded)
-        reconstruction_error = torch.mean((x - decoded) ** 2, dim=[1, 2, 3])
-
-        self.reconstruction_metrics.append({
-            'mse': mse_loss.item(),
-            'ssim': ssim_score.item(),
-            'error_std': reconstruction_error.std().item(),
-            'error_mean': reconstruction_error.mean().item()
-        })
-
-        # Track timing and memory
-        training_time = (time.perf_counter() - training_start_time) * 1000  # ms
-        self.training_times.append(training_time)
-        self.inference_times.append(inference_time)
-
-        if torch.cuda.is_available():
-            memory_after = torch.cuda.memory_allocated(self.device)
-            memory_used = (memory_after - memory_before) / (1024 * 1024)  # MB
-            self.memory_usage.append(memory_used)
-
-        # Log basic metrics
+        # Loss is logged every batch (Lightning detaches internally — no extra sync).
         self.log("train/loss", mse_loss, on_epoch=True, prog_bar=True, sync_dist=True)
         if self.cluster_weight > 0:
             self.log("train/total_loss", loss, on_epoch=True, prog_bar=True, sync_dist=True)
             self.log("train/cluster_loss", cluster_loss_val, on_epoch=True, sync_dist=True)
-        self.log("train/ssim", ssim_score, on_epoch=True, prog_bar=True, sync_dist=True)
-        self.log("train/reconstruction_error", reconstruction_error.mean(), on_epoch=True, sync_dist=True)
 
-        # Log timing metrics
-        self.log("train/training_time_ms", training_time, on_epoch=True, prog_bar=False, sync_dist=True)
-        self.log("train/inference_time_ms", inference_time, on_epoch=True, prog_bar=False, sync_dist=True)
-        if torch.cuda.is_available():
-            self.log("train/memory_mb", memory_used, on_epoch=True, prog_bar=False, sync_dist=True)
+        # Everything below is instrumentation (each .item()/SSIM/synchronize forces
+        # a GPU stall) — restrict to profile batches to keep throughput high.
+        if profile:
+            self.batch_losses.append(mse_loss.item())
+            ssim_score = self.calculate_ssim(x, decoded)
+            reconstruction_error = torch.mean((x - decoded) ** 2, dim=[1, 2, 3])
+            self.reconstruction_metrics.append({
+                'mse': mse_loss.item(),
+                'ssim': ssim_score.item(),
+                'error_std': reconstruction_error.std().item(),
+                'error_mean': reconstruction_error.mean().item()
+            })
+            training_time = (time.perf_counter() - training_start_time) * 1000  # ms
+            self.training_times.append(training_time)
+            self.inference_times.append(inference_time)
+            self.log("train/ssim", ssim_score, on_epoch=True, prog_bar=True, sync_dist=True)
+            self.log("train/reconstruction_error", reconstruction_error.mean(), on_epoch=True, sync_dist=True)
+            self.log("train/training_time_ms", training_time, on_epoch=True, prog_bar=False, sync_dist=True)
+            self.log("train/inference_time_ms", inference_time, on_epoch=True, prog_bar=False, sync_dist=True)
+            if torch.cuda.is_available():
+                memory_after = torch.cuda.memory_allocated(self.device)
+                memory_used = (memory_after - memory_before) / (1024 * 1024)  # MB
+                self.memory_usage.append(memory_used)
+                self.log("train/memory_mb", memory_used, on_epoch=True, prog_bar=False, sync_dist=True)
 
         # Run automatic analysis periodically. Previously this ran on EVERY
         # batch, which dominated epoch time (~27 min/epoch) and is unnecessary —
