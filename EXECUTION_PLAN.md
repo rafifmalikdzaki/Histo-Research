@@ -107,7 +107,10 @@ then clean scoped aggregate → `compute_statistical_significance.py` (Holm) →
 ---
 
 ## Loop bookkeeping
+- **MANDATORY: update the Notion work-log page after EVERY step and EVERY commit** —
+  page `3846b247-440f-8144-ae0f-efc912265426`. One dated line/section per action: what
+  ran, key numbers, what's next. Never skip it, even for small steps.
 - Heartbeat: while a job runs, reschedule ~1800 s; when idle and a step is ready, act immediately.
 - On any step failure: capture the log tail, record the error in this file under the step,
-  push-notify, and stop (do not thrash).
-- Three idle ticks with nothing actionable and no running job → push-notify + end loop.
+  update Notion with the failure, push-notify, and stop (do not thrash).
+- Three idle ticks with nothing actionable and no running job → update Notion + push-notify + end loop.
