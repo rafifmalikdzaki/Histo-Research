@@ -1,0 +1,3 @@
+config,silhouette,dbi,chi,xie_beni,treat_ami,treat_ari
+dae_kan_recon(OFF),0.033,6.298,141.9,17.17,0.4233,0.2456
+dae_kan_DEC(ON),0.0464,4.293,199.7,5.91,0.405,0.236
