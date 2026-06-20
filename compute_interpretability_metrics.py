@@ -44,6 +44,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 from models.factory import get_model
 from histodata import create_dataset, ImageDataset
+from clustering_metrics import normalize_embeddings, internal_metrics, external_metrics
 from utils.reproducibility import set_seed
 
 
@@ -502,28 +503,41 @@ def run_interpretability_analysis(model_path: str, data_dir: str, dataset: str,
         # Perform clustering on latent features
         from sklearn.cluster import KMeans
         
-        # Extract latent features
+        # Extract latent features AND keep the treatment labels so we can measure
+        # how well the latent space agrees with biology (the "biomarker
+        # correlation" Reviewer 1 #8 asked for), not just internal compactness.
         latent_features = []
+        treatment_labels = []
         model.eval()
-        
+
         with torch.no_grad():
-            for images, _ in test_loader:
+            for images, lbls in test_loader:
                 images = images.to(device)
                 _, _, z = model(images)
                 z_flat = z.view(z.size(0), -1).cpu().numpy()
                 latent_features.append(z_flat)
-        
+                treatment_labels.append(np.asarray(lbls))
+
         latent_features = np.vstack(latent_features)
-        
-        # Cluster
+        treatment_labels = np.concatenate(treatment_labels)
+
+        # Normalize before clustering (raw AE features cluster degenerately).
+        Xn = normalize_embeddings(latent_features, "standardize_l2")
         n_clusters = 5
-        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
-        cluster_labels = kmeans.fit_predict(latent_features)
-        
+        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+        cluster_labels = kmeans.fit_predict(Xn)
+
         # Create cluster-wise analysis
         create_cluster_wise_analysis(metrics_df, cluster_labels, output_dir)
-        
+
+        # Internal validity + agreement with treatment biology.
         summary_stats['cluster_analysis'] = True
+        summary_stats['cluster_internal'] = internal_metrics(Xn, cluster_labels)
+        if len(np.unique(treatment_labels)) > 1:
+            summary_stats['cluster_vs_treatment'] = external_metrics(
+                treatment_labels, cluster_labels, prefix="treatment_")
+            print(f"  Treatment AMI={summary_stats['cluster_vs_treatment']['treatment_ami']:.3f} "
+                  f"ARI={summary_stats['cluster_vs_treatment']['treatment_ari']:.3f}")
     
     # Save summary
     summary_path = output_path / 'summary.json'

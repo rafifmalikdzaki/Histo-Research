@@ -51,6 +51,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 from models.factory import get_model
 from utils.reproducibility import set_seed, create_experiment_directory
+from clustering_metrics import normalize_embeddings, internal_metrics
 
 
 def create_parametrized_model(model_name: str, latent_dim: int = 128,
@@ -99,36 +100,26 @@ def evaluate_clustering_quality(embeddings: np.ndarray, n_clusters: int = 5,
         Dictionary containing clustering metrics.
     """
     from sklearn.cluster import KMeans
-    from sklearn.metrics import (silhouette_score, davies_bouldin_score,
-                                  calinski_harabasz_score)
-    
+
     if len(embeddings) < n_clusters * 2:
-        return {
-            'silhouette': np.nan,
-            'davies_bouldin': np.nan,
-            'calinski_harabasz': np.nan
-        }
-    
-    # Cluster
-    kmeans = KMeans(n_clusters=n_clusters, random_state=seed, n_init='auto')
-    labels = kmeans.fit_predict(embeddings)
-    
-    # Compute metrics
-    if len(np.unique(labels)) < 2:
-        return {
-            'silhouette': -1,
-            'davies_bouldin': float('inf'),
-            'calinski_harabasz': 0
-        }
-    
-    sil_score = silhouette_score(embeddings, labels)
-    db_score = davies_bouldin_score(embeddings, labels)
-    ch_score = calinski_harabasz_score(embeddings, labels)
-    
+        return {'silhouette': np.nan, 'davies_bouldin': np.nan,
+                'calinski_harabasz': np.nan, 'xie_beni': np.nan,
+                'n_effective_clusters': 0}
+
+    # Normalize before clustering (standardize + L2) — raw AE features otherwise
+    # produce degenerate clusters and untrustworthy indices. Then delegate to the
+    # shared, degeneracy-robust metric module (same path as the main pipeline) so
+    # the sweep is comparable to run_clustering_analysis.py.
+    X = normalize_embeddings(embeddings, "standardize_l2")
+    kmeans = KMeans(n_clusters=n_clusters, random_state=seed, n_init=10)
+    labels = kmeans.fit_predict(X)
+    m = internal_metrics(X, labels)
     return {
-        'silhouette': round(float(sil_score), 6),
-        'davies_bouldin': round(float(db_score), 6),
-        'calinski_harabasz': round(float(ch_score), 6)
+        'silhouette': round(m['silhouette'], 6) if m['silhouette'] == m['silhouette'] else np.nan,
+        'davies_bouldin': round(m['davies_bouldin'], 6) if m['davies_bouldin'] == m['davies_bouldin'] else np.nan,
+        'calinski_harabasz': round(m['calinski_harabasz'], 6) if m['calinski_harabasz'] == m['calinski_harabasz'] else np.nan,
+        'xie_beni': round(m['xie_beni'], 6) if m['xie_beni'] == m['xie_beni'] else np.nan,
+        'n_effective_clusters': m['n_effective_clusters'],
     }
 
 

@@ -48,6 +48,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 from models.factory import get_model
 from histodata import create_dataset, ImageDataset
+from clustering_metrics import normalize_embeddings, internal_metrics, external_metrics
 from utils.reproducibility import set_seed, create_experiment_config, save_config
 
 
@@ -129,29 +130,29 @@ def evaluate_clustering_transfer(embeddings: np.ndarray, labels: np.ndarray,
         Dictionary with clustering metrics.
     """
     from sklearn.cluster import KMeans
-    from sklearn.metrics import (silhouette_score, davies_bouldin_score,
-                                  calinski_harabasz_score, adjusted_mutual_info_score,
-                                  adjusted_rand_score)
-    
-    # Cluster
-    kmeans = KMeans(n_clusters=n_clusters, random_state=seed, n_init='auto')
-    cluster_labels = kmeans.fit_predict(embeddings)
-    
-    # Internal metrics
-    sil_score = silhouette_score(embeddings, cluster_labels)
-    db_score = davies_bouldin_score(embeddings, cluster_labels)
-    ch_score = calinski_harabasz_score(embeddings, cluster_labels)
-    
-    # External metrics (if labels available)
-    ami_score = adjusted_mutual_info_score(labels, cluster_labels)
-    ari_score = adjusted_rand_score(labels, cluster_labels)
-    
+
+    # Normalize first, then use the shared degeneracy-robust metric module so
+    # transfer numbers are directly comparable to the in-domain pipeline.
+    X = normalize_embeddings(embeddings, "standardize_l2")
+    kmeans = KMeans(n_clusters=n_clusters, random_state=seed, n_init=10)
+    cluster_labels = kmeans.fit_predict(X)
+
+    im = internal_metrics(X, cluster_labels)
+    ext = external_metrics(labels, cluster_labels)  # ami/ari/nmi/homogeneity/...
+
+    def _r(v):
+        return round(float(v), 6) if v == v else np.nan  # NaN-safe rounding
+
     return {
-        'silhouette': round(float(sil_score), 6),
-        'davies_bouldin': round(float(db_score), 6),
-        'calinski_harabasz': round(float(ch_score), 6),
-        'ami': round(float(ami_score), 6),
-        'ari': round(float(ari_score), 6)
+        'silhouette': _r(im['silhouette']),
+        'davies_bouldin': _r(im['davies_bouldin']),
+        'calinski_harabasz': _r(im['calinski_harabasz']),
+        'xie_beni': _r(im['xie_beni']),
+        'n_effective_clusters': im['n_effective_clusters'],
+        'ami': _r(ext['ami']),
+        'ari': _r(ext['ari']),
+        'nmi': _r(ext['nmi']),
+        'purity': _r(ext['purity']),
     }
 
 
