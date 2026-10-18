@@ -4,7 +4,6 @@ import time
 import warnings
 from datetime import datetime
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
@@ -29,6 +28,7 @@ from analysis.auto_analysis import AutomaticAnalyzer
 from training.embedding_io import EmbeddingIOMixin
 from training.hparams import generate_ablation_config, get_optimal_batch_size
 from training.reports import ReportsMixin
+
 
 class OptimizedMainModelWithAnalysis(pl.LightningModule,
                                      EmbeddingIOMixin,
@@ -648,8 +648,6 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule,
 def main():
     """Train entrypoint (also installed as `histodae-train`)."""
     import argparse
-
-    import pandas as pd
 
     from utils.reproducibility import create_experiment_config, set_seed
 

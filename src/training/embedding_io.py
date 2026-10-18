@@ -1,10 +1,10 @@
 """Embedding dump/collect helpers (mixin for the Lightning module)."""
 
-import torch
-import numpy as np
-import pandas as pd
 import os
 import time
+
+import numpy as np
+import torch
 
 
 class EmbeddingIOMixin:

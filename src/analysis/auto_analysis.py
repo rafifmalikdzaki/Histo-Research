@@ -19,8 +19,10 @@ import pandas as pd
 import scipy.stats as stats
 import torch
 import torch.nn as nn
-from matplotlib.gridspec import GridSpec
 from skimage import measure
+
+from analysis.embedding_cluster import EmbeddingClusterMixin
+from analysis.viz import VizMixin
 
 warnings.filterwarnings('ignore')
 
@@ -33,19 +35,9 @@ except ImportError:
     print("⚠ wandb not available - W&B logging will be disabled")
 
 try:
-    from umap import UMAP
-    UMAP_AVAILABLE = True
-except ImportError:
-    UMAP_AVAILABLE = False
-
-try:
     from models.dae import DAE_KAN_Attention  # noqa: F401  (availability probe)
 except ImportError:
     pass
-
-
-from analysis.embedding_cluster import EmbeddingClusterMixin
-from analysis.viz import VizMixin
 
 
 class AutomaticAnalyzer(VizMixin, EmbeddingClusterMixin):

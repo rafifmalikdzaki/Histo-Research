@@ -1,15 +1,12 @@
 """Epoch/embedding analysis reports and visualisations (mixin)."""
 
-import torch
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import glob
 import os
 from datetime import datetime
-from sklearn.preprocessing import StandardScaler
-import umap
-from sklearn.manifold import TSNE
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import torch
 
 
 class ReportsMixin:

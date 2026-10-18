@@ -1,10 +1,11 @@
 """Batch visualisation and paper-dashboard builders (mixin)."""
 
-import torch
-import numpy as np
-import matplotlib.pyplot as plt
 import os
 from datetime import datetime
+
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
 from matplotlib.gridspec import GridSpec
 
 

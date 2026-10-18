@@ -1,13 +1,19 @@
 """Embedding clustering + bootstrap stability analysis (mixin)."""
 
+import os
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import os
-from sklearn.preprocessing import StandardScaler
-import umap
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
+
+# Availability probe (same pattern as auto_analysis): the clustering method
+# below needs UMAP at runtime; without it analysis is skipped with a notice
+# instead of dying on an ImportError/NameError deep in the call.
+try:
+    from umap import UMAP
+    UMAP_AVAILABLE = True
+except ImportError:
+    UMAP_AVAILABLE = False
 
 
 class EmbeddingClusterMixin:

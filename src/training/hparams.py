@@ -1,7 +1,8 @@
 """Hyperparameter helpers (batch-size probe, ablation configs)."""
 
-import torch
 from datetime import datetime
+
+import torch
 
 
 def get_optimal_batch_size(model, device, input_size=(3, 128, 128)):
