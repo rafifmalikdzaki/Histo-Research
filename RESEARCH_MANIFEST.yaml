@@ -1,4 +1,4 @@
-# refreshed: 2026-10-18 | git: cf16d5d
+# refreshed: 2026-10-18 | git: e2b499b8
 # Research manifest — single trackable inventory for the JOIV revision.
 # Refresh: python scripts/researcher.py refresh
 # Validate: python scripts/researcher.py check
@@ -78,4 +78,7 @@ key_documents:
 codebase:
   live_kan_modules: [src/models/kan_convolutional/efficient_kan.py, src/models/kan_convolutional/efficient_kan_conv_fixed.py]
   removed_dead: [convolution.py, KANConv.py, KANLinear.py, efficient_kan_conv.py, efficient_kan_conv_simple.py, optimized_kan_conv.py, optimized_kan_linear.py, main.py, analyze_existing_results.py]
-  legacy_kept: "src/analysis/old_modules/ (explicitly legacy, segregated); 30 root *.md guides indexed in DOCUMENTATION_INDEX.md"
+  legacy_kept: "archive/legacy-analysis/ (explicitly legacy, relocated out of src/ 2026-10-18); 30 root *.md guides indexed in DOCUMENTATION_INDEX.md"
+  cleanup_2026_10_18: "archived 12 root scripts+baselines -> archive/scripts/; 26 guides -> archive/docs/; checkpoints/handover-zip/report pdfs -> archive/binaries/; removed empty src/pipeline/, notebooks/, src/analysis/reports/, src/analysis/visualizations/"
+  modernize_2026_10_18: "pyproject is installable (uv pip install -e . --no-deps verified); ruff + pytest configured; tests/ pytest suite (23 passed); 7 model files unified into src/models/dae.py+blocks.py (A/B bit-identical); fixed real bugs: Any/WandbLogger undefined names, star import, f-string syntax errors"
+  slimroot_2026_10_18: "root 40+ -> 31 entries: joiv_handover + original_documents -> archive/; regenerable drive/ figures + test_analysis/ png removed (git); 1.8G hf/ Hub staging deleted after triple-corroborated landed-complete (manifest log + exact 22+4+5+1 inventory + handover note); drive/ figure names verified unreferenced in manuscript"
