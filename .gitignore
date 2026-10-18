@@ -17,3 +17,7 @@ auto_analysis/
 outputs/
 logs/
 
+
+# JOIV revision: Hub-upload staging bulk (already on private Hub repos)
+joiv_revision/hf/dataset_staging/
+joiv_revision/hf/tarship/

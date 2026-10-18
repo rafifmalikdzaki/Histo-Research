@@ -1,0 +1,8 @@
+model,ami_20x,ami_40x
+baseline,0.4778,0.3989
+dae_kan_attention,0.4754,0.446
+bam_only,0.4411,0.3873
+kan_only,0.4801,0.4294
+no_bam,0.4757,0.4059
+no_kan,0.4781,0.4008
+no_eka,0.5009,0.4361

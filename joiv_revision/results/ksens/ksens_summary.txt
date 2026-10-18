@@ -1,0 +1,5 @@
+# k-sensitivity: KMeans treatment-AMI vs k (standardize_l2, test 4,536 tiles)
+# mean±SD over staged seed runs per k
+
+baseline: k=3: 0.346±0.040 (n=3) | k=4: 0.423±0.104 (n=3) | k=5: 0.427±0.044 (n=3) | k=6: 0.420±0.011 (n=3) | k=7: 0.404±0.017 (n=3) | k=8: 0.392±0.011 (n=3)
+dae_kan_attention: k=3: 0.383±0.020 (n=3) | k=4: 0.473±0.020 (n=3) | k=5: 0.455±0.005 (n=3) | k=6: 0.433±0.012 (n=3) | k=7: 0.408±0.004 (n=3) | k=8: 0.396±0.003 (n=3)
