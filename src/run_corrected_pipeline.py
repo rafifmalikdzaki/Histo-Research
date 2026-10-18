@@ -124,7 +124,7 @@ def extract_one(model: str, run_dir: Path, dataset: str, batch_size: int,
         print(f"⚠️  no checkpoint in {run_dir}; skipping extraction")
         return False
     cmd = [
-        PYTHON, "extract_embeddings_for_clustering.py",
+        PYTHON, "src/extract_embeddings_for_clustering.py",
         "--model-name", model, "--dataset", _full_dataset(dataset), "--phase", "test",
         "--checkpoint", str(ckpt), "--output-dir", str(run_dir),
         "--batch-size", str(batch_size),

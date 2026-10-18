@@ -58,10 +58,12 @@ py-modules = ["histodata", "metadata", "clustering_metrics", "clustering_objecti
               "run_corrected_pipeline", "run_clustering_analysis",
               "compute_statistical_significance", "generate_clustering_plots",
               "generate_latex_tables", "evaluate_stats", "create_hepar_csv",
-              "create_pannuke_csv", "pl_training_with_analysis_and_optimization"]
+              "create_pannuke_csv", "pl_training_with_analysis_and_optimization",
+              "extract_embeddings_for_clustering"]
 
 [project.scripts]
 histodae-train = "pl_training_with_analysis_and_optimization:main"
+histodae-extract = "extract_embeddings_for_clustering:main"
 histodae-pipeline = "run_corrected_pipeline:main"
 histodae-cluster = "run_clustering_analysis:main"
 histodae-stats = "compute_statistical_significance:main"
