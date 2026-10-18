@@ -25,6 +25,7 @@ Usage:
 """
 
 import argparse
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,41 @@ METRICS = {
 }
 
 
+def _normalize_dataset_name(name: str) -> str:
+    """Lowercase alphanumeric fold so 'hepar' matches 'HeparUnifiedPNG'."""
+    return re.sub(r'[^a-z0-9]', '', name.lower())
+
+
+def _read_run_dataset(exp_dir: Path) -> list[str]:
+    """Best-effort dataset tags for a run dir (directory name, then config)."""
+    candidates = [_normalize_dataset_name(exp_dir.name)]
+    for config_path in exp_dir.rglob('experiment.yaml'):
+        try:
+            import yaml
+            with open(config_path) as f:
+                config = yaml.safe_load(f) or {}
+            for key in ('dataset', 'dataset_name', 'data'):
+                if config.get(key):
+                    candidates.append(_normalize_dataset_name(str(config[key])))
+                    break
+        except Exception:
+            pass
+        break  # first config file only, mirroring load_experiment_metrics
+    return [c for c in candidates if c]
+
+
+def _dataset_matches(wanted: str, candidates: list[str]) -> bool:
+    """Folded match so 'hepar' and 'HeparUnifiedPNG' match either way.
+
+    Substring covers dataset names embedded in directory names; the prefix
+    fallback covers short config tags ('hepar') against long canonical names.
+    """
+    return any(
+        wanted in c or c in wanted or wanted.startswith(c) or c.startswith(wanted)
+        for c in candidates
+    )
+
+
 def find_experiment_runs(
     base_dir: str = "outputs",
     model_name: str | None = None,
@@ -58,7 +94,9 @@ def find_experiment_runs(
     Args:
         base_dir: Base outputs directory
         model_name: Model name to filter by
-        dataset: Dataset name to filter by
+        dataset: Dataset name to filter by (matched against the directory
+            name and the run's experiment.yaml, so 'HeparUnifiedPNG'
+            matches runs tagged 'hepar')
 
     Returns:
         List of paths to experiment directories
@@ -76,9 +114,18 @@ def find_experiment_runs(
     if model_name:
         exp_dirs = [d for d in exp_dirs if model_name in d.name]
 
-    # Filter by dataset
+    # Filter by dataset (dir name first — run dirs rarely carry the dataset;
+    # fall back to the experiment.yaml tag recorded at training time)
     if dataset:
-        exp_dirs = [d for d in exp_dirs if dataset in d.name]
+        wanted = _normalize_dataset_name(dataset)
+        kept = []
+        for d in exp_dirs:
+            if _dataset_matches(wanted, _read_run_dataset(d)):
+                kept.append(d)
+        skipped = len(exp_dirs) - len(kept)
+        if skipped:
+            print(f"ℹ️  Skipped {skipped} run(s) not matching dataset '{dataset}'")
+        exp_dirs = kept
 
     return sorted(exp_dirs)
 
@@ -155,7 +202,7 @@ def aggregate_multi_seed_results(
     Returns:
         Dictionary with aggregated metrics (mean ± std)
     """
-    # Collect metrics per seed
+    # Collect metrics per seed (sorted for deterministic ordering)
     seed_metrics = {}
 
     for exp_dir in exp_dirs:
@@ -163,26 +210,33 @@ def aggregate_multi_seed_results(
 
         if metrics and 'seed' in metrics:
             seed = metrics['seed']
+            if seed in seed_metrics:
+                print(f"⚠️  Duplicate seed {seed}: keeping {seed_metrics[seed]['_dir']}, "
+                      f"ignoring {exp_dir}")
+                continue
+            metrics['_dir'] = str(exp_dir)
             seed_metrics[seed] = metrics
 
     # Compute aggregated statistics
     aggregated = {}
 
     for metric in METRICS.keys():
-        values = []
-
-        for seed_data in seed_metrics.values():
-            if metric in seed_data and seed_data[metric] is not None:
-                values.append(seed_data[metric])
+        ordered = sorted(
+            (seed, data) for seed, data in seed_metrics.items()
+            if metric in data and data[metric] is not None
+        )
+        seeds = [seed for seed, _ in ordered]
+        values = [data[metric] for _, data in ordered]
 
         if len(values) > 0:
             aggregated[metric] = {
                 'mean': np.mean(values),
-                'std': np.std(values),
+                'std': np.std(values, ddof=1) if len(values) > 1 else 0.0,
                 'min': np.min(values),
                 'max': np.max(values),
                 'n_runs': len(values),
-                'values': values  # Keep individual values for statistical tests
+                'values': values,  # Keep individual values for statistical tests
+                'seeds': seeds,  # Parallel to values; required for seed-aligned pairing
             }
         else:
             aggregated[metric] = {
@@ -191,7 +245,8 @@ def aggregate_multi_seed_results(
                 'min': None,
                 'max': None,
                 'n_runs': 0,
-                'values': []
+                'values': [],
+                'seeds': [],
             }
 
     return aggregated
@@ -216,8 +271,34 @@ def compute_statistical_tests(
     results = {}
 
     for metric in METRICS.keys():
-        values_a = model_a_metrics.get(metric, {}).get('values', [])
-        values_b = model_b_metrics.get(metric, {}).get('values', [])
+        entry_a = model_a_metrics.get(metric, {})
+        entry_b = model_b_metrics.get(metric, {})
+
+        # Align pairs by seed: a paired test is only valid on runs that share
+        # the same seed in both arms. Never truncate positionally.
+        seeds_a = entry_a.get('seeds', [])
+        seeds_b = entry_b.get('seeds', [])
+        values_a = entry_a.get('values', [])
+        values_b = entry_b.get('values', [])
+        if seeds_a and seeds_b:
+            map_b = dict(zip(seeds_b, values_b))
+            paired = [(va, map_b[s]) for s, va in zip(seeds_a, values_a) if s in map_b]
+            values_a = [va for va, _ in paired]
+            values_b = [vb for _, vb in paired]
+            shared = sorted(set(seeds_a) & set(seeds_b))
+        else:
+            # Legacy entries without seed tags: fall back to positional pairing
+            # only when both arms have equal length, else refuse.
+            shared = []
+            if len(values_a) != len(values_b):
+                results[metric] = {
+                    'test': test_type,
+                    'statistic': None,
+                    'p_value': None,
+                    'significant': None,
+                    'note': 'Untagged runs with unequal lengths cannot be paired safely'
+                }
+                continue
 
         # Need paired samples
         if len(values_a) < 2 or len(values_b) < 2:
@@ -229,11 +310,6 @@ def compute_statistical_tests(
                 'note': 'Insufficient samples'
             }
             continue
-
-        # Ensure same length (paired test)
-        min_len = min(len(values_a), len(values_b))
-        values_a = values_a[:min_len]
-        values_b = values_b[:min_len]
 
         try:
             if test_type == 'wilcoxon':
@@ -252,7 +328,9 @@ def compute_statistical_tests(
                 'p_value': float(p_value),
                 'significant': bool(significant),
                 'mean_diff': float(np.mean(values_a) - np.mean(values_b)),
-                'effect_size': compute_cohens_d(values_a, values_b)
+                'effect_size': compute_cohens_d(values_a, values_b),
+                'n_paired': len(values_a),
+                'paired_seeds': shared,
             }
 
         except Exception as e:
@@ -269,26 +347,28 @@ def compute_statistical_tests(
 
 def compute_cohens_d(group1: list[float], group2: list[float]) -> float:
     """
-    Compute Cohen's d effect size.
+    Compute the paired Cohen's d effect size (d_z).
+
+    The callers always pass seed-aligned pairs, so the correct estimator is
+    the mean paired difference over the standard deviation of the
+    differences — not the independent-groups pooled standard deviation.
 
     Args:
-        group1: First group values
-        group2: Second group values
+        group1: First group values (paired with group2 by seed)
+        group2: Second group values (paired with group1 by seed)
 
     Returns:
-        Cohen's d value
+        Paired Cohen's d value
     """
-    n1, n2 = len(group1), len(group2)
-    mean1, mean2 = np.mean(group1), np.mean(group2)
-    var1, var2 = np.var(group1, ddof=1), np.var(group2, ddof=1)
+    diffs = np.asarray(group1, dtype=float) - np.asarray(group2, dtype=float)
+    if len(diffs) < 2:
+        return 0.0
+    sd = np.std(diffs, ddof=1)
 
-    # Pooled standard deviation
-    pooled_std = np.sqrt(((n1 - 1) * var1 + (n2 - 1) * var2) / (n1 + n2 - 2))
-
-    if pooled_std == 0:
+    if sd == 0:
         return 0.0
 
-    return (mean1 - mean2) / pooled_std
+    return float(np.mean(diffs) / sd)
 
 
 def create_summary_table(
@@ -527,7 +607,7 @@ Examples:
                 if model in exp_dir.name:
                     models_found.add(model)
 
-        args.models = list(models_found)
+        args.models = sorted(models_found)
         print(f"🔍 Found models: {args.models}")
 
     elif args.models:
