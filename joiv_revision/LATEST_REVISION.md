@@ -44,8 +44,14 @@ Histopathological Images* (JOIV, decision letters 14 Oct 2026; 5-day window).
   §III-F frozen-encoder + biology; DEC-instability limitation stated.
   Now includes the k-sensitivity justification (§II-C) and the 20-epoch
   scout (§III-A).
-- Response letter `response/response_letter_draft.md` filled (no placeholders);
-  comment matrix, reference audit, tables/figures plan staged.
+- Response letter `response/response_letter_draft.md` filled (no placeholders)
+  and aligned v2 with the external audit: original architecture figure restored
+  unchanged (A12), abstract 241 words to match the online submission draft,
+  retired 1-seed numbers replaced by frozen values (A5), PanNuke as
+  pre-training source only (A6), Table-II-only compute scope (A8), DEC arm
+  flagged provisional (A7), and stated limits on specimen provenance (A1/B3),
+  seed mapping (A4), capacity matching (A10), and magnification control.
+  Comment matrix, reference audit, tables/figures plan staged.
 
 ### Gap results — banked
 Frozen ResNet-50 (treat-AMI 0.245 KMeans / 0.354 GMM), Cramér's V
@@ -95,9 +101,12 @@ Plateau k = 4–6 both models; k = 6 pre-registered, not tuned (peaks at k = 4�
 
 ## 4. What is left (must-do before submission)
 
-1. **Hub manifest check.** Confirm `sweep/` bulk checksums vs local
+1. **Sync local abstract with online draft.** Local `manuscript_master.md`
+   abstract counts 233 words; the online submission draft reads 241. Port the
+   8-word difference (or confirm which text is canonical) and rebuild the docx.
+2. **Hub manifest check.** Confirm `sweep/` bulk checksums vs local
    (`HF_MANIFEST.md` update). Mechanical; bulk already landed (168 files).
-2. **DOI resolution.** Verify all 38 refs resolve (conference items need care).
+3. **DOI resolution.** Verify all 38 refs resolve (conference items need care).
 3. **Production figures.** Print-resolution UMAP/montages + JOIV-template
    tracked-changes copy.
 4. **User-owned.** Confirm JOIV portal status (5-day window from 14 Oct may
