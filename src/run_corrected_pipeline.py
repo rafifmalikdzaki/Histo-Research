@@ -74,6 +74,29 @@ def _newest_new_run(before: set) -> Path | None:
     return max(new, key=lambda p: p.stat().st_mtime)
 
 
+def _stamp_run_seed(run_dir: Path, model: str, seed: int, dataset: str) -> None:
+    """Record the training seed inside the auto_analysis run dir.
+
+    The in-training analyzer names run dirs without the seed and its
+    experiment_config.json carries none, so without this stamp the
+    clustering/stats stages cannot pair runs by seed (they used to treat
+    every row as seed -1, collapsing all pairs). The stats stage reads this
+    file via run_clustering_analysis.extract_seed; evaluate_stats also picks
+    it up through its configs/experiment.yaml scan.
+    """
+    from utils.reproducibility import load_config, save_config
+    cfg_path = run_dir / 'configs' / 'experiment.yaml'
+    try:
+        meta = dict(load_config(cfg_path))
+    except Exception:
+        meta = {}
+    meta['seed'] = seed
+    meta.setdefault('model_name', model)
+    meta.setdefault('dataset', dataset)
+    save_config(meta, cfg_path)
+    print(f"✓ stamped seed{seed} into {cfg_path}")
+
+
 def _find_checkpoint(run_dir: Path) -> Path | None:
     ckpt_dir = run_dir / "checkpoints"
     if not ckpt_dir.exists():
@@ -113,6 +136,7 @@ def train_one(model: str, seed: int, epochs: int, batch_size: int, dataset: str,
     if run_dir is None:
         print(f"⚠️  could not locate run dir for {model} seed{seed}")
         return None
+    _stamp_run_seed(run_dir, model, seed, dataset)
     print(f"✓ trained {model} seed{seed} -> {run_dir}")
     return run_dir
 

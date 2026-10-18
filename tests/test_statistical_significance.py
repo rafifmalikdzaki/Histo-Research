@@ -55,6 +55,36 @@ def test_align_keeps_equal_legacy_arms():
     assert (a, b) == ([0.5, 0.6], [0.1, 0.2])
 
 
+def test_align_treats_missing_sentinels_as_untagged():
+    # Legacy -1 sentinels, None (new runs), and NaN (CSV round-trip) must
+    # never pair rows onto one bogus shared seed: fully-untagged arms fall
+    # back to positional pairing at equal length.
+    for missing in ([-1, -1], [None, None], [float("nan"), float("nan")]):
+        a, b = _align_seed_pairs("m", "base", "kmeans", "silhouette",
+                                 [0.5, 0.6], missing, [0.1, 0.2], missing)
+        assert (a, b) == ([0.5, 0.6], [0.1, 0.2])
+
+
+def test_align_drops_unknown_seeds_but_keeps_real_pairs():
+    a, b = _align_seed_pairs("m", "base", "kmeans", "silhouette",
+                             [0.5, 0.9, 0.7], [-1, 42, 123],
+                             [0.2, 0.4], [42, 123])
+    assert a == pytest.approx([0.9, 0.7])
+    assert b == pytest.approx([0.2, 0.4])
+
+
+def test_align_skips_when_only_one_arm_tagged():
+    a, b = _align_seed_pairs("m", "base", "kmeans", "silhouette",
+                             [0.5, 0.6], [42, 123], [0.1, 0.2], [-1, -1])
+    assert (a, b) == ([], [])
+
+
+def test_align_matches_integral_float_seeds():
+    a, b = _align_seed_pairs("m", "base", "kmeans", "silhouette",
+                             [0.5, 0.6], [42.0, 123.0], [0.1, 0.2], [42, 123])
+    assert (a, b) == ([0.5, 0.6], [0.1, 0.2])
+
+
 def test_run_tests_pairs_by_seed_end_to_end():
     df = pd.DataFrame([
         _row("proposed", "kmeans", [0.5, 0.7, 0.9], [42, 123, 456]),

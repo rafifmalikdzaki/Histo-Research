@@ -10,6 +10,7 @@ Usage:
 """
 
 import argparse
+import re
 import sys
 import warnings
 from pathlib import Path
@@ -79,10 +80,37 @@ def extract_model_name(dir_name: str) -> str:
         return 'unknown'
 
 
-def extract_seed(dir_name: str) -> int | None:
-    """Extract seed from directory name."""
-    import re
-    match = re.search(r'seed(\d+)', dir_name, re.IGNORECASE)
+def extract_seed(exp_dir: Path) -> int | None:
+    """Best-effort seed for a run directory.
+
+    Training records the seed in ``configs/experiment.yaml`` (or
+    ``configs/experiment.json``) via ``utils.reproducibility`` — read that
+    first. Fall back to a ``seed<N>`` fragment in the directory name (older
+    runs). Return ``None`` (never a ``-1`` sentinel) when unknown so
+    downstream pairing treats the arm as untagged instead of pairing every
+    row on a bogus shared seed.
+    """
+    for cfg in (exp_dir / 'configs' / 'experiment.yaml',
+                exp_dir / 'configs' / 'experiment.json'):
+        try:
+            if not cfg.exists():
+                continue
+            if cfg.suffix == '.yaml':
+                import yaml
+                meta = yaml.safe_load(cfg.read_text()) or {}
+            else:
+                import json
+                meta = json.loads(cfg.read_text())
+            seed = meta.get('seed')
+            if isinstance(seed, bool):
+                continue
+            if isinstance(seed, float) and seed.is_integer():
+                seed = int(seed)
+            if isinstance(seed, int):
+                return seed
+        except Exception:
+            continue
+    match = re.search(r'seed(\d+)', exp_dir.name, re.IGNORECASE)
     if match:
         return int(match.group(1))
     return None
@@ -169,7 +197,7 @@ def process_experiment(exp_dir: Path, k: int, methods: list[str],
     computed against treatment_group, diet, and magnification (confound check).
     """
     model_name = extract_model_name(exp_dir.name)
-    seed = extract_seed(exp_dir.name)
+    seed = extract_seed(exp_dir)
 
     if model_name == 'unknown':
         print(f"⚠️  Skipping unknown model: {exp_dir.name}")
@@ -191,7 +219,10 @@ def process_experiment(exp_dir: Path, k: int, methods: list[str],
 
             result = {
                 'model': model_name,
-                'seed': seed if seed is not None else -1,
+                # None (unknown) serialises to an empty CSV cell, which the
+                # stats stage reads as untagged — never the bogus -1 sentinel
+                # that used to collapse every row onto one fake seed pair.
+                'seed': seed,
                 'experiment_dir': str(exp_dir),
                 'clustering_method': method,
                 'normalize': normalize,
