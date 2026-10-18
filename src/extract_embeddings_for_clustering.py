@@ -102,10 +102,22 @@ def extract(
     device: str,
 ) -> int:
     df = load_metadata(phase, image_path=str(image_root), dataset_name=dataset)
-    missing = [p for p in df["path"] if not Path(p).exists()]
-    if missing:
-        print(f"⚠️  {len(missing)} image paths missing on disk (e.g. {missing[0]}); "
-              "they will fail at load time", file=sys.stderr)
+    if len(df) == 0:
+        raise RuntimeError(
+            f"No {phase} rows for dataset={dataset!r} under {image_root}: "
+            "nothing to extract (check dataset name and image root).")
+    present = df["path"].map(lambda p: Path(p).exists())
+    if not bool(present.all()):
+        bad = df.loc[~present, "path"]
+        print(f"⚠️  Dropping {len(bad)} {phase} rows whose image files are "
+              f"missing on disk (e.g. {bad.iloc[0]}); embeddings + metadata "
+              f"will cover the remaining {int(present.sum())} rows.",
+              file=sys.stderr)
+        df = df.loc[present].reset_index(drop=True)
+    if len(df) == 0:
+        raise RuntimeError(
+            f"All {phase} image files are missing on disk under {image_root}: "
+            "nothing to extract.")
 
     ds = TileDataset(df["path"].tolist(), image_size=image_size)
     dl = DataLoader(ds, batch_size=batch_size, shuffle=False,
