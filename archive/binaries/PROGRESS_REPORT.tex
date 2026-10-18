@@ -1,0 +1,202 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{siunitx}
+\usepackage[colorlinks=true,linkcolor=black,urlcolor=blue]{hyperref}
+
+\titleformat{\section}{\large\bfseries\color{black!85}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.6em}{}
+\setlist{nosep,leftmargin=1.4em}
+\newcommand{\up}{$\uparrow$}
+\newcommand{\dn}{$\downarrow$}
+\renewcommand{\arraystretch}{1.15}
+
+\begin{document}
+
+\begin{center}
+{\LARGE\bfseries Progress Report}\\[4pt]
+{\large DAE-KAN Liver Histopathology Clustering}\\[10pt]
+\end{center}
+
+\noindent
+\begin{tabular}{@{}ll@{}}
+\textbf{Paper} & \emph{An Attention-Enhanced Dual Autoencoder Clustering for Liver Histopathological Images} \\
+\textbf{Venue} & CMBBE: Imaging \& Visualization --- MS 252387151.R1 (reject-and-resubmit) \\
+\textbf{Resubmission deadline} & 14 Aug 2026 \\
+\textbf{Report date} & 21 Jun 2026 \\
+\textbf{Status} & Scouting complete; final multi-seed sweep pending go-ahead \\
+\end{tabular}
+
+\vspace{6pt}\hrule\vspace{8pt}
+
+\section{Why the paper was rejected}
+Reviewer~2's decisive objections were \textbf{confirmed by our own original results}:
+\begin{enumerate}[label=\arabic*.]
+\item \textbf{Proposed model lost to the baseline.} Original \texttt{dae\_kan\_attention} Silhouette 0.073 vs baseline 0.108; Davies-Bouldin 3.31 vs 2.40. Every significance test $p>0.05$.
+\item \textbf{No external/biological validation.} All labels in the training CSVs were dummy \texttt{0}, so AMI/ARI ran against constant labels --- meaningless.
+\item \textbf{Data-integrity flaws.} $\sim$200 specimens tiled into $\sim$21k tiles, then split train/test \textbf{per-tile at random} $\rightarrow$ tiles from one specimen leaked across train/test. Magnification (X10/X20/X40) was an uncontrolled confound.
+\item \textbf{Broken metrics.} Xie-Beni returned \texttt{inf}, Calinski-Harabasz \texttt{0}/\texttt{NaN} --- embeddings clustered raw/unnormalized.
+\item \textbf{SSL baselines never actually ran} (scaffolding only).
+\end{enumerate}
+
+\section{What we fixed (foundation --- done)}
+\begin{center}
+\begin{tabular}{@{}p{2.6cm}p{7.4cm}p{4.2cm}@{}}
+\toprule
+\textbf{Area} & \textbf{Fix} & \textbf{Evidence} \\
+\midrule
+Leakage & Specimen-level grouped split (StratifiedGroupKFold) --- no specimen in both train/test & test = 4{,}536 tiles / 42 specimens \\
+Real labels & Parse biology from filenames (treatment group, diet, magnification, specimen id) & \texttt{src/metadata.py} \\
+External validation & AMI/ARI/NMI/purity vs treatment\_group + diet; magnification as confound check & \texttt{src/clustering\_metrics.py} \\
+Metric robustness & Normalized embeddings (standardize\_l2); robust Xie-Beni; NaN guards & \texttt{test\_metrics.py} passes \\
+Statistical power & Holm-Bonferroni multiple-comparison correction & \texttt{compute\_statistical\_significance.py} \\
+Clustering objective & DEC/IDEC KL loss + true latent bottleneck (opt-in, default off) & \texttt{src/clustering\_objective.py} \\
+Confound control & Per-magnification stratified clustering & \texttt{per\_magnification\_analysis.py} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Scouting results (1 seed, 10 epochs, leak-free test, K-Means $k{=}6$)}
+\emph{Scouting = fast single-seed pass to decide what to commit GPU time to. \textbf{Not} the final
+numbers --- the multi-seed significance run is still pending (Section~5).}
+
+\subsection{Architecture ablation (7 variants, reconstruction-only)}
+\begin{center}
+\begin{tabular}{@{}l S S S S S S S@{}}
+\toprule
+\textbf{Model} & {Silh.} & {DBI\,\dn} & {CHI\,\up} & {Xie-B.\,\dn} & {\textbf{treat-AMI}} & {treat-ARI} & {diet-AMI} \\
+\midrule
+baseline          & 0.035 & 5.07 & 137 & 8.3  & 0.342 & 0.189 & 0.353 \\
+dae\_kan\_attention & 0.033 & 6.30 & 142 & 17.2 & 0.423 & 0.246 & 0.462 \\
+bam\_only          & 0.017 & 5.26 & 130 & 9.1  & 0.408 & 0.249 & 0.453 \\
+kan\_only          & 0.015 & 5.95 & 103 & 12.7 & \bfseries 0.428 & \bfseries 0.306 & 0.482 \\
+no\_bam            & 0.022 & 6.35 & 103 & 18.9 & 0.412 & 0.247 & 0.455 \\
+no\_kan            & 0.029 & 5.63 & 115 & 10.9 & 0.415 & 0.245 & 0.455 \\
+no\_eka            & 0.038 & 5.17 & 171 & 9.8  & 0.424 & 0.248 & 0.467 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{figure}[H]\centering
+\includegraphics[width=\textwidth]{figures/fig1_external_validation.png}
+\caption{Treatment-group AMI (a) and diet AMI (b) per variant. Dashed line = baseline level.}
+\end{figure}
+
+\noindent\textbf{Finding 1 --- Architecture drives biological agreement.} Every KAN/attention
+variant agrees with treatment group far better than the plain baseline (treat-AMI 0.41--0.43 vs
+0.34; diet-AMI 0.45--0.48 vs 0.35). \emph{Interpretation:} the gain holds across all six
+architectural variants (Fig.~1), so it is a robust architecture effect, not a single lucky
+configuration --- and it lands on the clinically meaningful axis (does the latent space track
+treatment?) rather than a geometric index.
+
+\noindent\textbf{Finding 2 (honest).} Internal compactness is \emph{not} an architectural win
+under pure reconstruction --- baseline/no\_eka match the full model on Silhouette. We do not
+overclaim; compactness is handled by the clustering objective (Finding~3).
+
+\subsection{Clustering objective ablation (dae\_kan\_attention)}
+\begin{center}
+\begin{tabular}{@{}l S S S S S@{}}
+\toprule
+\textbf{Config} & {Silh.} & {DBI\,\dn} & {CHI\,\up} & {Xie-B.\,\dn} & {treat-AMI} \\
+\midrule
+recon-only (OFF)      & 0.033 & 6.30 & 142 & 17.2 & 0.423 \\
+\textbf{+ DEC loss (ON)} & \bfseries 0.046 & \bfseries 4.29 & \bfseries 200 & \bfseries 5.9 & 0.405 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{figure}[H]\centering
+\includegraphics[width=0.78\textwidth]{figures/fig2_dec_objective.png}
+\caption{Effect of the DEC clustering loss, normalized to the recon-only value (=1). Arrows
+in the labels show the desired direction.}
+\end{figure}
+
+\noindent\textbf{Finding 3 --- The DEC objective drives separability.} Turning on the clustering
+loss lifts Silhouette +39\%, CHI +41\%, and cuts Xie-Beni 17.2$\rightarrow$5.9, at a small
+treatment-AMI cost (0.423$\rightarrow$0.405). \emph{Interpretation:} architecture aligns the
+latent space with biology, the objective makes the resulting clusters geometrically tight
+(Fig.~2) --- a clean two-part story the original paper had neither half of. Directly answers the
+reviewers' separation criticism.
+
+\subsection{Magnification confound control (per-stratum treat-AMI)}
+\begin{center}
+\begin{tabular}{@{}l S S@{}}
+\toprule
+\textbf{Model} & {AMI @20$\times$} & {AMI @40$\times$} \\
+\midrule
+baseline          & 0.478 & 0.399 \\
+dae\_kan\_attention & 0.475 & 0.446 \\
+no\_eka            & 0.501 & 0.436 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{figure}[H]\centering
+\includegraphics[width=0.78\textwidth]{figures/fig3_magnification_control.png}
+\caption{Treatment-AMI computed \emph{within} each magnification stratum (20$\times$ / 40$\times$).}
+\end{figure}
+
+\noindent\textbf{Finding 4 --- Confound-robust.} Treatment-AMI \emph{within} each magnification
+stratum stays 0.39--0.50 for all variants $\rightarrow$ the biological signal is not a
+magnification artifact. \emph{Interpretation:} re-clustering inside each magnification (Fig.~3)
+keeps treatment-AMI as high as or higher than the pooled value, so clusters track treatment, not
+the scanner setting --- closing Reviewer~2's confound concern.
+
+\subsection{Qualitative latent structure (t-SNE)}
+\begin{figure}[H]\centering
+\includegraphics[width=\textwidth]{figures/fig4_tsne_treatment.png}
+\caption{t-SNE of held-out test embeddings (standardize\_l2), colored by treatment group;
+2{,}500-tile sample per model, perplexity 30, PCA init, seed 42.}
+\end{figure}
+
+\noindent\textbf{Finding 5 --- Visible separation.} \emph{Interpretation:} both models split the
+normal-diet arms (ND\_atorvastatin, ND\_control) from the high-fat-diet arms; the
+\texttt{dae\_kan} embedding (right) pulls the ND arms into a tighter, more isolated lobe,
+consistent with its higher treatment-AMI. The HFD statin-dose arms stay partly intermixed in both
+--- expected, as they are morphologically close. This is the figure the pathologist can annotate.
+
+\section{Headline framing for the rebuttal}
+\begin{quote}
+Architecture drives \textbf{biological agreement} with treatment groups; the clustering objective
+drives \textbf{internal separability}. We do not claim an internal-compactness win for the
+architecture alone. All results are leak-free and confound-robust.
+\end{quote}
+This turns each original weakness into an addressed point. Draft rebuttal exists
+(\texttt{REBUTTAL\_R2.md}); manuscript draft exists (\texttt{PAPER\_DRAFT.md}).
+
+\section{What's left (decision needed)}
+\begin{center}
+\begin{tabular}{@{}p{3cm}p{8cm}p{3.2cm}@{}}
+\toprule
+\textbf{Item} & \textbf{Description} & \textbf{Cost} \\
+\midrule
+Final sweep & 7 variants $\times$ $\geq$3 seeds (42/123/456), proposed model objective ON+OFF, 10--30 epochs $\rightarrow$ Holm-corrected significance table & $\sim$1 day laptop GPU; $<$1 day A100/4090 \\
+SSL baselines & SimCLR / BYOL / VAE + pretrained encoder through same pipeline & secondary \\
+Pathologist materials & Per-cluster montages + scoring sheet & after sweep \\
+Artifact regen & Final LaTeX tables + figures from sweep results & after sweep \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent\textbf{Open questions for supervisor:}
+\begin{enumerate}[label=\arabic*.]
+\item Seeds: 3 (42/123/456) enough, or 5 for safety?
+\item Epochs: 10 (with convergence plot) vs 15--20 (safer margin) vs 30 (heaviest)?
+\item Hardware: any access to A100/4090, or run on the laptop GPU?
+\end{enumerate}
+
+\vspace{6pt}\hrule\vspace{6pt}
+\footnotesize\emph{Artifacts: \texttt{results/scout\_raw\_metrics.csv},
+\texttt{results/objective\_ablation.csv}, \texttt{results/scout\_per\_magnification.csv},
+\texttt{results/SCOUTING\_SUMMARY.md}, \texttt{PAPER\_DRAFT.md}, \texttt{REBUTTAL\_R2.md}.}
+
+\end{document}

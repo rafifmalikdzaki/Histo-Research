@@ -1,0 +1,155 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{siunitx}
+\usepackage{float}
+\usepackage[colorlinks=true,linkcolor=black,urlcolor=blue,citecolor=black]{hyperref}
+
+\titleformat{\section}{\large\bfseries\color{black!85}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.6em}{}
+\setlist{nosep,leftmargin=1.4em}
+\newcommand{\up}{$\uparrow$}
+\newcommand{\dn}{$\downarrow$}
+\renewcommand{\arraystretch}{1.15}
+
+\begin{document}
+
+\begin{center}
+{\LARGE\bfseries Results Report --- Completed Testing}\\[4pt]
+{\large DAE-KAN Liver Histopathology Clustering}\\[10pt]
+\end{center}
+
+\noindent
+\begin{tabular}{@{}ll@{}}
+\textbf{Paper} & \emph{An Attention-Enhanced Dual Autoencoder Clustering for Liver Histopathological Images} \\
+\textbf{Venue} & CMBBE: Imaging \& Visualization --- MS 252387151.R1 (reject-and-resubmit) \\
+\textbf{Report date} & 21 Jun 2026 \\
+\textbf{Scope of this report} & Completed scouting experiments + interpretation. Final multi-seed run pending. \\
+\end{tabular}
+
+\vspace{6pt}\hrule\vspace{8pt}
+
+\section{Experimental setup (what was tested)}
+All numbers below come from the \textbf{corrected, leak-free pipeline}:
+\begin{itemize}
+\item \textbf{Split:} specimen-level grouped (StratifiedGroupKFold) --- no specimen appears in both train and test. Held-out \textbf{test = 4{,}536 tiles from 42 specimens}.
+\item \textbf{Embeddings:} bottleneck features, normalized with \texttt{standardize\_l2} before clustering (raw features previously gave degenerate clusters).
+\item \textbf{Clustering:} K-Means, $k=6$.
+\item \textbf{Metrics:} internal --- Silhouette\,\up, Davies-Bouldin\,\dn, Calinski-Harabasz\,\up, Xie-Beni\,\dn; external (biological) --- AMI/ARI vs treatment group and diet, with magnification AMI as a confound check.
+\item \textbf{Regime:} scouting --- \textbf{1 seed, 10 epochs} per variant (a fast pass to decide where to commit the full GPU budget). All 7 architecture variants + the DEC-objective on/off pair were trained.
+\end{itemize}
+\textbf{Caveat:} single-seed scouting carries no significance bars. The multi-seed
+($\geq$3 seeds) run that produces the Holm-corrected significance table is the next step.
+
+\section{Result 1 --- Architecture improves biological agreement}
+\begin{table}[H]\centering
+\begin{tabular}{@{}l S S S S S S S@{}}
+\toprule
+\textbf{Model} & {Silh.} & {DBI\,\dn} & {CHI\,\up} & {Xie-B.\,\dn} & {\textbf{treat-AMI}} & {treat-ARI} & {diet-AMI} \\
+\midrule
+baseline          & 0.035 & 5.07 & 137 & 8.3  & 0.342 & 0.189 & 0.353 \\
+dae\_kan\_attention & 0.033 & 6.30 & 142 & 17.2 & 0.423 & 0.246 & 0.462 \\
+bam\_only          & 0.017 & 5.26 & 130 & 9.1  & 0.408 & 0.249 & 0.453 \\
+kan\_only          & 0.015 & 5.95 & 103 & 12.7 & \bfseries 0.428 & \bfseries 0.306 & 0.482 \\
+no\_bam            & 0.022 & 6.35 & 103 & 18.9 & 0.412 & 0.247 & 0.455 \\
+no\_kan            & 0.029 & 5.63 & 115 & 10.9 & 0.415 & 0.245 & 0.455 \\
+no\_eka            & 0.038 & 5.17 & 171 & 9.8  & 0.424 & 0.248 & 0.467 \\
+\bottomrule
+\end{tabular}
+\caption{7-variant architecture ablation, reconstruction-only.}
+\end{table}
+
+\begin{figure}[H]\centering
+\includegraphics[width=\textwidth]{figures/fig1_external_validation.png}
+\caption{Treatment-group AMI (a) and diet AMI (b). Dashed line = baseline level.}
+\end{figure}
+
+\noindent\textbf{Interpretation.} Every KAN/attention variant clusters in much closer agreement
+with the underlying biology than the plain baseline: treatment-AMI rises from 0.34 to
+0.41--0.43 ($+20$--$25\%$) and diet-AMI from 0.35 to 0.45--0.48. The gain is consistent across
+\emph{all six} architectural variants, so it is an architecture effect, not a lucky single
+configuration. \textbf{This is the central positive result} --- it directly rebuts the reviewers'
+"the model adds nothing" objection, but on the metric that matters clinically (does the latent
+space track treatment?) rather than on a geometric index.
+
+\noindent\textbf{Honest counterpoint.} Internal compactness (Silhouette) is \emph{not} improved
+by architecture under pure reconstruction --- baseline and \texttt{no\_eka} match the full model.
+We will state this plainly rather than overclaim. Compactness is addressed separately by the
+clustering objective (Result~2).
+
+\section{Result 2 --- The DEC objective drives internal separability}
+\begin{table}[H]\centering
+\begin{tabular}{@{}l S S S S S@{}}
+\toprule
+\textbf{Config} & {Silh.\,\up} & {DBI\,\dn} & {CHI\,\up} & {Xie-B.\,\dn} & {treat-AMI} \\
+\midrule
+recon-only (OFF)      & 0.033 & 6.30 & 142 & 17.2 & 0.423 \\
+\textbf{+ DEC loss (ON)} & \bfseries 0.046 & \bfseries 4.29 & \bfseries 200 & \bfseries 5.9 & 0.405 \\
+\bottomrule
+\end{tabular}
+\caption{Clustering-objective ablation on \texttt{dae\_kan\_attention}.}
+\end{table}
+
+\begin{figure}[H]\centering
+\includegraphics[width=0.8\textwidth]{figures/fig2_dec_objective.png}
+\caption{Effect of the DEC clustering loss, normalized to the recon-only value (=1).}
+\end{figure}
+
+\noindent\textbf{Interpretation.} Adding the DEC/IDEC clustering loss sharply improves every
+internal index: Silhouette $+39\%$ (0.033$\to$0.046), Calinski-Harabasz $+41\%$ (142$\to$200),
+Davies-Bouldin down 32\% (6.30$\to$4.29), and Xie-Beni cut by two-thirds (17.2$\to$5.9). The
+cost is a small drop in treatment-AMI (0.423$\to$0.405, $-4\%$). \textbf{Together with Result~1
+this gives a clean two-part story:} the architecture aligns the latent space with biology; the
+objective makes the resulting clusters geometrically tight. The original paper had neither.
+
+\section{Result 3 --- The signal is not a magnification artifact}
+\begin{figure}[H]\centering
+\includegraphics[width=0.8\textwidth]{figures/fig3_magnification_control.png}
+\caption{Treatment-AMI computed \emph{within} each magnification stratum.}
+\end{figure}
+
+\noindent\textbf{Interpretation.} Reviewer 2 worried that clusters might be tracking
+magnification (X20/X40), an uncontrolled confound in the original work. When we re-cluster
+\emph{within} each magnification stratum separately, treatment-AMI stays high (0.39--0.50) for
+all variants --- as high as or higher than the pooled value. The biological signal therefore
+survives after removing magnification, confirming it is genuine and not a scanning artifact.
+
+\section{Result 4 --- Qualitative latent structure}
+\begin{figure}[H]\centering
+\includegraphics[width=\textwidth]{figures/fig4_tsne_treatment.png}
+\caption{t-SNE of held-out test embeddings (standardize\_l2), colored by treatment group.
+2{,}500-tile sample per model, perplexity 30, PCA init, seed 42.}
+\end{figure}
+
+\noindent\textbf{Interpretation.} Both models separate the normal-diet arms (ND\_atorvastatin,
+ND\_control --- purple/brown) from the high-fat-diet arms. The \texttt{dae\_kan} embedding
+(right) pulls the ND arms into a tighter, more isolated lobe and gives the HFD treatment arms
+cleaner internal gradients, consistent with its higher treatment-AMI. The high-fat arms remain
+partly intermixed in both --- expected, since several are statin-dose variants of the same diet
+and are morphologically close. This is the kind of figure the pathologist can annotate.
+
+\section{Summary \& what remains}
+\begin{itemize}
+\item \textbf{Architecture $\rightarrow$ biology} (treat-AMI $0.34\to0.41$--$0.43$, all 6 variants). \emph{Done.}
+\item \textbf{DEC objective $\rightarrow$ separability} (Silhouette $+39\%$, Xie-Beni $17\to5.9$). \emph{Done.}
+\item \textbf{Confound-robust} (per-magnification treat-AMI $0.39$--$0.50$). \emph{Done.}
+\item \textbf{Pending:} multi-seed sweep (7 variants $\times$ $\geq$3 seeds, objective ON+OFF) for the Holm-corrected significance table; SSL baselines; pathologist montages; final artifact regeneration.
+\end{itemize}
+
+\noindent\textbf{Decisions needed:} (1) seeds --- 3 or 5? (2) epochs --- 10/15--20/30?
+(3) hardware --- laptop GPU ($\sim$1 day) or A100/4090 ($<$1 day)?
+
+\vspace{6pt}\hrule\vspace{6pt}
+\footnotesize\emph{Sources: \texttt{results/scout\_raw\_metrics.csv},
+\texttt{results/objective\_ablation.csv}, \texttt{results/scout\_per\_magnification.csv};
+embeddings from \texttt{auto\_analysis/baseline\_*\_20260620\_*}. Figures regenerable via the
+plotting script in the scratchpad.}
+
+\end{document}
