@@ -1,0 +1,80 @@
+# refreshed: 2026-10-18 | git: 8d0612a
+# Research manifest — single trackable inventory for the JOIV revision.
+# Refresh: python scripts/researcher.py refresh
+# Validate: python scripts/researcher.py check
+paper:
+  title: "Attention-Enhanced Dual Autoencoder Clustering for Liver Histopathological Images"
+  venue: "JOIV: International Journal on Informatics Visualization"
+  decision: "Revisions Required (3 rounds: 2026-07-08, 2026-08-19, 2026-10-14; 5-day window from 14 Oct)"
+  manuscript_original: paper_rev/5487-15247-2-RV (2).docx
+  manuscript_revised: joiv_revision/manuscript/JOIV_revised_v1.docx
+  manuscript_master: joiv_revision/manuscript/manuscript_master.md
+hub:
+  user: pytholove
+  collection: pytholove/joiv-revision-dae-kan-liver-histopathology-6ad38ddcc996ae6086599c23
+  dataset_repo: pytholove/hepar-pannuke-joiv-rev   # private, type dataset
+  model_repo: pytholove/dae-kan-attn-joiv-rev      # private, type model
+  visibility: private (never make public without ethics confirmation)
+compute:
+  host: gpu-kc (labkc-comm1, 2x RTX 3060 12GB)
+  project_dir: /mnt/home/dzakirm/histodae_joiv
+  venv: /mnt/home/dzakirm/histodae_joiv/.venv (torch 2.8.0+cu128, pytorch-lightning 2.6.6)
+  transfer: HF Hub tar shards (Hub caps a directory at 10k files; tiles must be flat for histodata)
+data:
+  hepar_tiles: 21168          # canonical flat tiles dir
+  pannuke_patches: 7901
+  split: "specimen-level StratifiedGroupKFold (asserted disjoint)"
+  train: "16632 tiles / 154 specimens"
+  test: "4536 tiles / 42 specimens"
+  treatment_groups: 7
+experiments:
+  sweep_recon: "7 variants x 3 seeds (42/123/456) x 10 epochs, k=6, standardize_l2 — DONE (gpu-kc)"
+  sweep_dec: "dae_kan_attention DEC objective ON x 3 seeds — DONE (z-space eval)"
+  dec_latent_eval: "128-d latent evaluated — internal up, external down, seed-unstable; NOT headline"
+  frozen_encoder: "ResNet50 ImageNet frozen — treat-AMI 0.245 KMeans / 0.354 GMM (below all trained)"
+  profiling: "RTX 3060 bs8: baseline 29.4 ms/img (34.1 fps, 4.9M), full 37.3 ms/img (26.8 fps, 5.23M)"
+  biology: "dae_kan Cramer's V: treatment 0.477, diet 0.939, magnification 0.726 (confound)"
+  per_magnification: "within-stratum treat-AMI >= pooled in 20x/40x strata — signal survives (multi-seed)"
+  k_sensitivity: "AMI k=3 0.346 -> k=4 0.423 -> k=6 0.420 (baseline); k=6 on plateau — RUNNING (full table pending)"
+  scout20: "20-epoch seed-42 (baseline, kan_only, dae_kan, no_eka) — RUNNING"
+frozen_results:
+  metrics_csv: joiv_revision/results/frozen_metrics.csv        # 72 rows
+  summary_md: joiv_revision/results/frozen_summary.md
+  stats_csv: joiv_revision/results/frozen_stats.csv            # 48 paired tests, 0 Holm-sig
+  headline:
+    dae_kan_kmeans_treat_ami: "0.433±0.012 (baseline 0.420±0.011, d=+2.2)"
+    dec_vs_recon_dbi: "5.32 -> 4.19 (d=-1.7); Xie-Beni 11.44 -> 5.16 (d=-4.2); treat-AMI 0.433 -> 0.399"
+revision_checklist:
+  editor:
+    - {id: E1, point: "abstract 230-250 words, 5 components", status: done, evidence: "abstract = 237 words"}
+    - {id: E2, point: ">=30 refs, >=70% 2020-2026", status: done, evidence: "38 refs, 27 (71%) recent"}
+    - {id: E3, point: "IEEE style + DOI", status: partial, evidence: "IEEE list built; DOI resolution to verify at production"}
+  reviewer_a:
+    - {id: A1, point: "datasets/split/leakage", status: done, evidence: "specimen split asserted; Methods II.A"}
+    - {id: A2, point: "dual vs conventional AE + impl details", status: done, evidence: "Methods II.B (verified layer specs)"}
+    - {id: A3, point: "remove undefined classification metrics", status: done, evidence: "Table IV block deleted; AMI/ARI instead"}
+    - {id: A4, point: "k/seeds/variability/CI", status: done, evidence: "3 seeds, Holm tests, effect sizes; k-sensitivity running"}
+    - {id: A5, point: "biological validation", status: done, evidence: "AMI/ARI + Cramer's V + enrichment"}
+    - {id: A6, point: "expert validation + baselines + external data", status: partial, evidence: "frozen encoder done; pathologist scores outstanding (limitation)"}
+    - {id: A7, point: "DBI inconsistency", status: done, evidence: "one frozen number system; grep-validated"}
+    - {id: A8, point: "compute measurement consistency", status: done, evidence: "one protocol; 1000/(ms/img)=fps verified"}
+    - {id: A9, point: "math notation (ELU/CHI)", status: done, evidence: "equations rewritten in Methods"}
+    - {id: A10, point: "ablation isolation + variability + capacity", status: done, evidence: "7 variants x 3 seeds + params column"}
+    - {id: A11, point: "claim moderation", status: done, evidence: "associated/consistent-with language"}
+    - {id: A12, point: "language/formatting/figures", status: partial, evidence: "text pass done; print figures pending"}
+  reviewer_b: "B1-B5 map onto A3/A5/A7/A8/A1/A6/A10 (see response letter)"
+open_items:
+  - "scout20 verdict -> optional 3-seed 20-epoch confirmation + refreeze"
+  - "bulk curated Hub upload (sweep script) -> confirm sweep/frozen + runs on model repo"
+  - "JOIV portal status (user) — 5-day window landed 2026-10-19"
+  - "pathologist scoring (user/expert) — montages + template exported"
+  - "print-resolution figures + JOIV template tracked-changes copy (production)"
+key_documents:
+  audit: joiv_revision/LATEST_REVISION.md
+  response_letter: joiv_revision/response/response_letter_draft.md
+  comment_matrix: joiv_revision/response/comment_matrix.md
+  documentation_index: DOCUMENTATION_INDEX.md
+codebase:
+  live_kan_modules: [src/models/kan_convolutional/efficient_kan.py, src/models/kan_convolutional/efficient_kan_conv_fixed.py]
+  removed_dead: [convolution.py, KANConv.py, KANLinear.py, efficient_kan_conv.py, efficient_kan_conv_simple.py, optimized_kan_conv.py, optimized_kan_linear.py, main.py, analyze_existing_results.py]
+  legacy_kept: "src/analysis/old_modules/ (explicitly legacy, segregated); 30 root *.md guides indexed in DOCUMENTATION_INDEX.md"
