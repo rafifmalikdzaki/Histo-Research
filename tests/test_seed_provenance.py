@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from src.run_clustering_analysis import extract_seed
+from src.run_clustering_analysis import extract_model_name, extract_seed
 from src.run_corrected_pipeline import _stamp_run_seed
 
 
@@ -62,3 +62,18 @@ def test_pipeline_stamp_preserves_existing_config(tmp_path):
     with open(cfg / "experiment.yaml") as f:
         meta = yaml.safe_load(f)
     assert (meta["seed"], meta["model_name"], meta["lr"]) == (42, "baseline", 0.002)
+
+
+def test_stamped_model_name_beats_group_prefixed_dirname(tmp_path):
+    # Group prefix 'no_bam_' would misclassify by substring; the stamped
+    # config (written by current training) must win.
+    d = _run_dir(tmp_path, "no_bam_baseline_20260620_142434")
+    cfg = d / "configs"
+    cfg.mkdir()
+    (cfg / "experiment.yaml").write_text("model_name: baseline\nseed: 42\n")
+    assert extract_model_name(d) == "baseline"
+
+
+def test_dirname_model_fallback_and_unknown(tmp_path):
+    assert extract_model_name(_run_dir(tmp_path, "bam_only_seed42_hepar")) == "bam_only"
+    assert extract_model_name(_run_dir(tmp_path, "some_random_dir")) == "unknown"

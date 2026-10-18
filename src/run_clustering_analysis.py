@@ -58,9 +58,23 @@ def find_experiment_dirs(base_dir: str, model_filter: str | None = None, model_e
     return sorted(exp_dirs)
 
 
-def extract_model_name(dir_name: str) -> str:
-    """Extract model name from directory name."""
-    dir_lower = dir_name.lower()
+def extract_model_name(exp_dir: Path) -> str:
+    """Model name for a run directory: stamped training config first.
+
+    Run dirs carry a group prefix (e.g. ``no_bam_baseline_<ts>`` for a
+    baseline run in group ``no_bam``), so naive substring matching on the
+    dirname can misclassify. Trust the recorded ``model_name`` when it names
+    a registered variant; otherwise fall back to dirname matching.
+    """
+    recorded = _read_run_config(exp_dir).get('model_name')
+    if isinstance(recorded, str) and recorded:
+        try:
+            from models.factory import MODELS
+            if recorded in MODELS:
+                return recorded
+        except Exception:
+            pass
+    dir_lower = exp_dir.name.lower()
 
     if 'dae_kan_attention' in dir_lower or 'daekan' in dir_lower:
         return 'dae_kan_attention'
@@ -80,16 +94,16 @@ def extract_model_name(dir_name: str) -> str:
         return 'unknown'
 
 
-def extract_seed(exp_dir: Path) -> int | None:
-    """Best-effort seed for a run directory.
+def _read_run_config(exp_dir: Path) -> dict:
+    """Best-effort training metadata recorded inside a run directory.
 
-    Training records the seed in ``configs/experiment.yaml`` (or
-    ``configs/experiment.json``) via ``utils.reproducibility`` — read that
-    first. Fall back to a ``seed<N>`` fragment in the directory name (older
-    runs). Return ``None`` (never a ``-1`` sentinel) when unknown so
-    downstream pairing treats the arm as untagged instead of pairing every
-    row on a bogus shared seed.
+    Reads ``configs/experiment.yaml`` (written by current training via
+    ``utils.reproducibility`` and stamped by the pipeline with the seed) and
+    ``configs/experiment.json``, merged (json wins on conflict; in practice
+    both are written together with identical content). Returns {} when
+    absent/unreadable.
     """
+    merged: dict = {}
     for cfg in (exp_dir / 'configs' / 'experiment.yaml',
                 exp_dir / 'configs' / 'experiment.json'):
         try:
@@ -101,15 +115,28 @@ def extract_seed(exp_dir: Path) -> int | None:
             else:
                 import json
                 meta = json.loads(cfg.read_text())
-            seed = meta.get('seed')
-            if isinstance(seed, bool):
-                continue
-            if isinstance(seed, float) and seed.is_integer():
-                seed = int(seed)
-            if isinstance(seed, int):
-                return seed
+            if isinstance(meta, dict):
+                merged.update(meta)
         except Exception:
             continue
+    return merged
+
+
+def extract_seed(exp_dir: Path) -> int | None:
+    """Best-effort seed for a run directory.
+
+    Training config first, then a ``seed<N>`` fragment in the directory name
+    (older runs). Return ``None`` (never a ``-1`` sentinel) when unknown so
+    downstream pairing treats the arm as untagged instead of pairing every
+    row on a bogus shared seed.
+    """
+    seed = _read_run_config(exp_dir).get('seed')
+    if isinstance(seed, bool):
+        pass
+    elif isinstance(seed, float) and seed.is_integer():
+        return int(seed)
+    elif isinstance(seed, int):
+        return seed
     match = re.search(r'seed(\d+)', exp_dir.name, re.IGNORECASE)
     if match:
         return int(match.group(1))
@@ -196,7 +223,7 @@ def process_experiment(exp_dir: Path, k: int, methods: list[str],
     biology metadata is available, external validity (AMI/ARI/NMI/purity) is
     computed against treatment_group, diet, and magnification (confound check).
     """
-    model_name = extract_model_name(exp_dir.name)
+    model_name = extract_model_name(exp_dir)
     seed = extract_seed(exp_dir)
 
     if model_name == 'unknown':
@@ -308,7 +335,7 @@ def main():
 
     all_results = []
     for i, exp_dir in enumerate(exp_dirs, 1):
-        model_name = extract_model_name(exp_dir.name)
+        model_name = extract_model_name(exp_dir)
 
         # Check if we should exclude this model from retraining
         should_exclude = False
