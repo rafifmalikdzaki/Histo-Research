@@ -43,3 +43,8 @@ Live inventory lives in `RESEARCH_MANIFEST.yaml` (`python scripts/researcher.py 
 
 Note: `*.md` is gitignored in this repo — these files (incl. this index) are
 local working documents, not versioned history.
+
+Cleanup 2026-10-18: superseded guides and drift-prone references now live in
+`archive/docs/`; superseded scripts in `archive/scripts/`; old checkpoints,
+handover zip and report PDFs in `archive/binaries/`. Root keeps only
+`README.md`, `CLAUDE.md`, `DATA_PATHS.md`, `HANDOVER.md`, and this index.

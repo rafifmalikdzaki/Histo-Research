@@ -35,14 +35,9 @@ This repository contains the official PyTorch implementation of our attention-en
 histodae/
 ├── src/
 │   ├── models/
-│   │   ├── model.py                    # Main DAE-KAN-Attention architecture
+│   │   ├── dae.py                      # Unified dual-autoencoder + 7 variant configs
+│   │   ├── blocks.py                   # Shared KAN/attention building blocks
 │   │   ├── factory.py                  # Model factory for different variants
-│   │   ├── model_baseline.py           # Baseline (no KAN, no BAM)
-│   │   ├── model_bam_only.py           # BAM attention only
-│   │   ├── model_kan_only.py           # KAN only (no attention)
-│   │   ├── model_no_bam.py             # No BAM variant
-│   │   ├── model_no_kan.py             # No KAN variant
-│   │   ├── model_no_eka.py             # No Efficient KAN Attention variant
 │   │   ├── attention_mechanisms/
 │   │   │   ├── bam.py                  # Bottleneck Attention Module
 │   │   │   ├── eca.py                  # Efficient Channel Attention
@@ -64,11 +59,9 @@ histodae/
 ├── config/
 │   └── experiment_config.yaml          # Centralized hyperparameter configuration
 │
-├── baselines/
-│   ├── simclr_baseline.py              # SimCLR encoder + KMeans
-│   ├── byol_baseline.py                # BYOL encoder + KMeans
-│   ├── vae_baseline.py                 # VAE + KMeans
-│   └── single_ae_baseline.py           # Single autoencoder (ablation)
+├── tests/                              # pytest suite (python -m pytest tests/)
+│
+├── archive/                            # Retired scripts, guides, legacy analysis
 │
 ├── outputs/                            # Experiment outputs (auto-generated)
 │   └── exp_<timestamp>_<name>/
@@ -107,11 +100,14 @@ cd histodae
 uv venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Install the project with its dependencies
+uv pip install -e ".[dev]"
 
-# Or using uv
-uv pip install -r requirements.txt
+# Or with plain pip
+pip install -e ".[dev]"
+
+# Run the test suite
+python -m pytest tests/
 ```
 
 ### 2. Data Preparation
