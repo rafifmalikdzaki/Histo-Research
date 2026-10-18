@@ -1,6 +1,7 @@
+import math
+
 import torch
 import torch.nn.functional as F
-import math
 
 
 class KANLinear(torch.nn.Module):
@@ -18,7 +19,7 @@ class KANLinear(torch.nn.Module):
         grid_eps=0.02,
         grid_range=[-1, 1],
     ):
-        super(KANLinear, self).__init__()
+        super().__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.grid_size = grid_size
@@ -161,7 +162,7 @@ class KANLinear(torch.nn.Module):
             self.scaled_spline_weight.view(self.out_features, -1),
         )
         output = base_output + spline_output
-        
+
         output = output.reshape(*original_shape[:-1], self.out_features)
         return output
 
@@ -250,7 +251,7 @@ class KAN(torch.nn.Module):
         grid_eps=0.02,
         grid_range=[-1, 1],
     ):
-        super(KAN, self).__init__()
+        super().__init__()
         self.grid_size = grid_size
         self.spline_order = spline_order
 

@@ -11,8 +11,8 @@ learn "what" and "where" to focus on.
 """
 
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 
 
 class ChannelGate(nn.Module):

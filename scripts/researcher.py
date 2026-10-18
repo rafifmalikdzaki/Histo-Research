@@ -60,7 +60,7 @@ def refresh() -> int:
                           capture_output=True, text=True).stdout.strip()
     stamp = f"# refreshed: {datetime.date.today().isoformat()} | git: {head}\n"
     text = _read()
-    text = stamp + "\n".join(l for l in text.splitlines() if not l.startswith("# refreshed:"))
+    text = stamp + "\n".join(line for line in text.splitlines() if not line.startswith("# refreshed:"))
     MANIFEST.write_text(text + "\n")
     print(stamp.strip())
     return 0

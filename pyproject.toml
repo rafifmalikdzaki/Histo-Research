@@ -1,7 +1,11 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "histodae"
 version = "0.1.0"
-description = "Add your description here"
+description = "Attention-enhanced dual autoencoder clustering for liver histopathological images"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -40,3 +44,57 @@ dependencies = [
     "wandb>=0.22.1",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.8",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+# Top-level src modules shipped as-is (frozen JOIV scripts import these
+# names; do not rename without shims).
+py-modules = ["histodata", "metadata", "clustering_metrics", "clustering_objective",
+              "run_corrected_pipeline", "run_clustering_analysis",
+              "compute_statistical_significance", "generate_clustering_plots",
+              "generate_latex_tables", "evaluate_stats", "create_hepar_csv",
+              "create_pannuke_csv"]
+
+[project.scripts]
+histodae-pipeline = "run_corrected_pipeline:main"
+histodae-cluster = "run_clustering_analysis:main"
+histodae-stats = "compute_statistical_significance:main"
+histodae-plots = "generate_clustering_plots:main"
+histodae-tables = "generate_latex_tables:main"
+histodae-evaluate = "evaluate_stats:main"
+histodae-make-hepar-csv = "create_hepar_csv:main"
+histodae-make-pannuke-csv = "create_pannuke_csv:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["models*", "utils*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+[tool.ruff.lint.per-file-ignores]
+# Late imports are intentional here: warnings filters (and the matplotlib
+# backend selection) must run before the heavy third-party imports below them.
+"run_clustering_analysis.py" = ["E402"]
+"compute_statistical_significance.py" = ["E402"]
+"generate_clustering_plots.py" = ["E402"]
+"generate_latex_tables.py" = ["E402"]
+"src/pl_training_with_analysis_and_optimization.py" = ["E402"]

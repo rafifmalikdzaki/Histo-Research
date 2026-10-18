@@ -33,8 +33,8 @@ analyses); the raw group token is preserved in `raw_group` for auditing.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, asdict
-from typing import Optional
+from dataclasses import asdict, dataclass
+
 
 # ---------------------------------------------------------------------------
 # Canonical treatment-group taxonomy.
@@ -84,8 +84,8 @@ class HeparMeta:
     treatment_group: str
     diet: str
     agent: str
-    magnification: Optional[int]
-    tile_id: Optional[int]
+    magnification: int | None
+    tile_id: int | None
     raw_group: str
 
     def as_dict(self) -> dict:
@@ -157,6 +157,7 @@ if __name__ == "__main__":
     import sys
     from collections import Counter
     from pathlib import Path
+
     import pandas as pd
 
     data_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("data/processed")

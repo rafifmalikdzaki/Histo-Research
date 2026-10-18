@@ -22,14 +22,14 @@ from __future__ import annotations
 
 import numpy as np
 from sklearn.metrics import (
-    silhouette_score,
-    davies_bouldin_score,
-    calinski_harabasz_score,
     adjusted_mutual_info_score,
     adjusted_rand_score,
-    normalized_mutual_info_score,
-    homogeneity_score,
+    calinski_harabasz_score,
     completeness_score,
+    davies_bouldin_score,
+    homogeneity_score,
+    normalized_mutual_info_score,
+    silhouette_score,
 )
 
 NORMALIZERS = ("none", "standardize", "l2", "standardize_l2")

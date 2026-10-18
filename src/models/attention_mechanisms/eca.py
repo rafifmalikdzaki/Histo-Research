@@ -7,9 +7,10 @@ ECANet proposes a local crosschannel interaction strategy without dimensionality
 which can be efficiently implemented via 1D convolution.
 """
 
+import math
+
 import torch
 from torch import nn
-import math
 
 
 class ECALayer(nn.Module):
