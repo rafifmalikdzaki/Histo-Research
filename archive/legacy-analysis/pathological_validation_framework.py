@@ -6,28 +6,23 @@ against pathological features, enabling expert pathologist collaboration
 and quantitative assessment of model interpretability.
 """
 
-import torch
-import torch.nn as nn
+import json
+import warnings
+from datetime import datetime
+
+import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
-import cv2
-from typing import Dict, List, Tuple, Optional, Union
-from matplotlib.patches import Rectangle, Circle, Polygon
+import torch
 from matplotlib.gridspec import GridSpec
-import json
-from datetime import datetime
-import scipy.stats as stats
-from skimage import measure, filters, morphology, segmentation, draw
-from sklearn.metrics import confusion_matrix, classification_report, roc_auc_score
-from sklearn.cluster import KMeans
-import warnings
+
 warnings.filterwarnings('ignore')
 
-from models.model import DAE_KAN_Attention
 from analysis.attention_visualizer import AttentionExtractor
 from analysis.enhanced_attention_analysis import EnhancedAttentionAnalyzer
+from models.model import DAE_KAN_Attention
 
 
 class PathologicalFeatureAnnotator:
@@ -44,7 +39,7 @@ class PathologicalFeatureAnnotator:
             'architecture': ['tumor_boundaries', 'necrosis', 'vascular_invasion']
         }
 
-    def create_annotation_template(self, image_shape: Tuple[int, int]) -> Dict:
+    def create_annotation_template(self, image_shape: tuple[int, int]) -> dict:
         """Create empty annotation template for an image"""
         return {
             'image_shape': image_shape,
@@ -57,7 +52,7 @@ class PathologicalFeatureAnnotator:
         }
 
     def add_annotation(self, image_id: str, feature_type: str,
-                      coordinates: List[Tuple[int, int]],
+                      coordinates: list[tuple[int, int]],
                       annotation_type: str = 'polygon',
                       confidence: float = 1.0,
                       notes: str = ""):
@@ -75,7 +70,7 @@ class PathologicalFeatureAnnotator:
 
     def load_annotations_from_file(self, file_path: str):
         """Load annotations from JSON file"""
-        with open(file_path, 'r') as f:
+        with open(file_path) as f:
             self.annotations = json.load(f)
 
     def save_annotations_to_file(self, file_path: str):
@@ -120,7 +115,7 @@ class AttentionPathologyValidator:
         self.validation_results = {}
 
     def compute_attention_annotation_overlap(self, attention_map: np.ndarray,
-                                          annotation_mask: np.ndarray) -> Dict[str, float]:
+                                          annotation_mask: np.ndarray) -> dict[str, float]:
         """
         Compute overlap metrics between attention and pathological annotations
         """
@@ -167,7 +162,7 @@ class AttentionPathologyValidator:
             'attention_size': np.sum(attention_binary)
         }
 
-    def validate_single_sample(self, image_id: str, input_tensor: torch.Tensor) -> Dict:
+    def validate_single_sample(self, image_id: str, input_tensor: torch.Tensor) -> dict:
         """
         Comprehensive validation for a single sample
         """
@@ -210,7 +205,7 @@ class AttentionPathologyValidator:
 
         return validation_results
 
-    def batch_validation(self, samples_data: List[Tuple[str, torch.Tensor]]) -> pd.DataFrame:
+    def batch_validation(self, samples_data: list[tuple[str, torch.Tensor]]) -> pd.DataFrame:
         """
         Perform batch validation across multiple samples
         """
@@ -245,7 +240,7 @@ class AttentionPathologyValidator:
 
         return pd.DataFrame(all_results)
 
-    def compute_validation_statistics(self, validation_df: pd.DataFrame) -> Dict:
+    def compute_validation_statistics(self, validation_df: pd.DataFrame) -> dict:
         """
         Compute comprehensive validation statistics
         """
@@ -289,7 +284,7 @@ class AttentionPathologyValidator:
         return stats
 
     def create_validation_visualization(self, validation_df: pd.DataFrame,
-                                     save_path: Optional[str] = None) -> plt.Figure:
+                                     save_path: str | None = None) -> plt.Figure:
         """
         Create comprehensive validation visualization
         """
@@ -416,7 +411,7 @@ class AttentionPathologyValidator:
         return fig
 
     def generate_validation_report(self, validation_df: pd.DataFrame,
-                                save_path: Optional[str] = None) -> str:
+                                save_path: str | None = None) -> str:
         """
         Generate comprehensive validation report
         """
@@ -427,7 +422,7 @@ class AttentionPathologyValidator:
 
         # Executive summary
         report.append("## Executive Summary\n")
-        report.append(f"This report presents the validation of DAE-KAN attention patterns against pathological annotations.")
+        report.append("This report presents the validation of DAE-KAN attention patterns against pathological annotations.")
         report.append(f"**Total Validated Samples**: {validation_stats['overall']['total_samples']}")
         report.append(f"**Feature Types**: {validation_stats['overall']['unique_feature_types']}")
         report.append(f"**Overall Mean IoU**: {validation_stats['overall']['mean_iou']:.3f}")
@@ -490,12 +485,12 @@ class AttentionPathologyValidator:
             best_feature = feature_performances[0]
             worst_feature = feature_performances[-1]
 
-            report.append(f"### Best Performing Feature")
+            report.append("### Best Performing Feature")
             report.append(f"- **{best_feature[0].replace('_', ' ').title()}**: IoU = {best_feature[1]:.3f}")
             report.append("  - The model attention aligns well with this feature type")
             report.append("  - Consider this feature as a baseline for model interpretability\n")
 
-            report.append(f"### Areas for Improvement")
+            report.append("### Areas for Improvement")
             report.append(f"- **{worst_feature[0].replace('_', ' ').title()}**: IoU = {worst_feature[1]:.3f}")
             report.append("  - The model attention shows poor alignment with this feature")
             report.append("  - Investigate why the model fails to focus on this pathology")
@@ -534,7 +529,7 @@ class AttentionPathologyValidator:
 
     def create_sample_annotation_interface(self, image: np.ndarray,
                                          attention_map: np.ndarray,
-                                         save_path: Optional[str] = None) -> plt.Figure:
+                                         save_path: str | None = None) -> plt.Figure:
         """
         Create interface for pathologist annotation
         """
@@ -649,8 +644,9 @@ def main():
     annotator.save_annotations_to_file("../analysis/annotations/sample_annotations.json")
 
     # Load dataset for validation
-    from histodata import create_dataset, ImageDataset
     from torch.utils.data import DataLoader
+
+    from histodata import ImageDataset, create_dataset
 
     train_ds = ImageDataset(*create_dataset('train'))
     dataloader = DataLoader(train_ds, batch_size=1, shuffle=True)

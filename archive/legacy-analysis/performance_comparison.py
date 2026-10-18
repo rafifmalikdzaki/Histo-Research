@@ -1,9 +1,8 @@
-import torch
-import torch.nn as nn
-import time
 import gc
-from typing import Dict, List, Tuple
+import time
+
 import numpy as np
+import torch
 
 # Import both original and optimized models
 from src.models.model import DAE_KAN_Attention as OriginalModel
@@ -90,7 +89,7 @@ def benchmark_model(model, input_tensor, num_runs=10, warmup_runs=3):
     }
 
 
-def compare_models(batch_sizes: List[int] = [2, 4, 8, 16]):
+def compare_models(batch_sizes: list[int] = [2, 4, 8, 16]):
     """
     Compare original vs optimized models across different batch sizes
     """
@@ -173,7 +172,7 @@ def compare_models(batch_sizes: List[int] = [2, 4, 8, 16]):
             memory_reduction = (original_metrics['mean_memory'] - optimized_metrics['mean_memory']) / original_metrics['mean_memory'] * 100
             throughput_improvement = (optimized_metrics['throughput'] - original_metrics['throughput']) / original_metrics['throughput'] * 100
 
-            print(f"  🚀 Performance Improvement:")
+            print("  🚀 Performance Improvement:")
             print(f"    ⚡ Speedup: {speedup:.2f}x")
             print(f"    💾 Memory reduction: {memory_reduction:.1f}%")
             print(f"    📈 Throughput improvement: {throughput_improvement:.1f}%")
@@ -198,7 +197,7 @@ def compare_models(batch_sizes: List[int] = [2, 4, 8, 16]):
     return results
 
 
-def print_summary(results: Dict):
+def print_summary(results: dict):
     """Print a summary of all benchmark results"""
     print("\n" + "=" * 60)
     print("📋 PERFORMANCE COMPARISON SUMMARY")
@@ -242,7 +241,7 @@ def print_summary(results: Dict):
                 if result['success']['optimized']:
                     max_optimized_batch = max(max_optimized_batch, batch_size)
 
-        print(f"\n📏 MAXIMUM BATCH SIZES:")
+        print("\n📏 MAXIMUM BATCH SIZES:")
         print(f"🔵 Original Model: {max_original_batch}")
         print(f"🟢 Optimized Model: {max_optimized_batch}")
 
@@ -289,4 +288,4 @@ if __name__ == "__main__":
 
         json.dump(json_results, f, indent=2)
 
-    print(f"\n💾 Results saved to performance_results.json")
+    print("\n💾 Results saved to performance_results.json")

@@ -5,25 +5,20 @@ This module provides enhanced attention visualization and analysis capabilities
 with quantitative metrics for pathological correlation validation.
 """
 
-import torch
-import torch.nn as nn
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import cv2
-from typing import Dict, List, Tuple, Optional, Union
-from matplotlib.patches import Rectangle, Circle
-from matplotlib.gridspec import GridSpec
-from matplotlib.colors import LinearSegmentedColormap
-import scipy.stats as stats
-from skimage import measure, filters, morphology, segmentation
-from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 import warnings
+
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import scipy.stats as stats
+from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.gridspec import GridSpec
+from skimage import measure
+
 warnings.filterwarnings('ignore')
 
-from models.model import DAE_KAN_Attention
 from analysis.attention_visualizer import AttentionExtractor
+from models.model import DAE_KAN_Attention
 
 
 class EnhancedAttentionAnalyzer:
@@ -36,7 +31,7 @@ class EnhancedAttentionAnalyzer:
         self.attention_metrics = {}
         self.pathological_regions = {}
 
-    def compute_attention_saliency_metrics(self, attention_map: np.ndarray) -> Dict[str, float]:
+    def compute_attention_saliency_metrics(self, attention_map: np.ndarray) -> dict[str, float]:
         """
         Compute comprehensive saliency metrics for attention maps
         """
@@ -87,7 +82,7 @@ class EnhancedAttentionAnalyzer:
         top_k_values = np.sort(attention_flat)[-k:]
         return np.sum(top_k_values) / (np.sum(attention_flat) + 1e-8)
 
-    def _compute_spatial_metrics(self, attention_map: np.ndarray) -> Dict[str, float]:
+    def _compute_spatial_metrics(self, attention_map: np.ndarray) -> dict[str, float]:
         """Compute spatial distribution metrics"""
         # Center of mass
         h, w = attention_map.shape
@@ -111,7 +106,7 @@ class EnhancedAttentionAnalyzer:
             'attention_spatial_std': np.sqrt(spatial_variance)
         }
 
-    def _compute_peak_metrics(self, attention_map: np.ndarray) -> Dict[str, float]:
+    def _compute_peak_metrics(self, attention_map: np.ndarray) -> dict[str, float]:
         """Compute peak-related metrics"""
         # Find local maxima
         local_maxima = measure.maximum_position(attention_map, labels=measure.label(attention_map > 0.1))
@@ -149,7 +144,7 @@ class EnhancedAttentionAnalyzer:
         }
 
     def identify_attention_regions(self, attention_map: np.ndarray,
-                                 num_regions: int = 5) -> Dict[str, np.ndarray]:
+                                 num_regions: int = 5) -> dict[str, np.ndarray]:
         """
         Identify distinct attention regions using clustering
         """
@@ -182,7 +177,7 @@ class EnhancedAttentionAnalyzer:
         }
 
     def compute_attention_region_correlation(self, attention_map: np.ndarray,
-                                           feature_map: np.ndarray) -> Dict[str, float]:
+                                           feature_map: np.ndarray) -> dict[str, float]:
         """
         Compute correlation between attention regions and pathological features
         """
@@ -212,9 +207,9 @@ class EnhancedAttentionAnalyzer:
             'region_correlations': correlations
         }
 
-    def create_enhanced_attention_visualization(self, attention_data: Dict[str, np.ndarray],
+    def create_enhanced_attention_visualization(self, attention_data: dict[str, np.ndarray],
                                               original_image: np.ndarray,
-                                              save_path: Optional[str] = None) -> plt.Figure:
+                                              save_path: str | None = None) -> plt.Figure:
         """
         Create enhanced attention visualization with quantitative metrics
         """
@@ -435,9 +430,9 @@ class EnhancedAttentionAnalyzer:
 
         return fig
 
-    def create_attention_comparison_plot(self, attention_data_list: List[Dict[str, np.ndarray]],
-                                      labels: List[str],
-                                      save_path: Optional[str] = None) -> plt.Figure:
+    def create_attention_comparison_plot(self, attention_data_list: list[dict[str, np.ndarray]],
+                                      labels: list[str],
+                                      save_path: str | None = None) -> plt.Figure:
         """
         Create comparison plot for multiple attention maps
         """
@@ -508,8 +503,8 @@ class EnhancedAttentionAnalyzer:
 
         return fig
 
-    def generate_attention_report(self, attention_data: Dict[str, np.ndarray],
-                                save_path: Optional[str] = None) -> str:
+    def generate_attention_report(self, attention_data: dict[str, np.ndarray],
+                                save_path: str | None = None) -> str:
         """
         Generate comprehensive attention analysis report
         """
@@ -607,10 +602,10 @@ def main():
     """
     print("Initializing Enhanced Attention Analysis...")
 
-    from analysis.attention_visualizer import AttentionExtractor
-    from models.model import DAE_KAN_Attention
-    from histodata import create_dataset, ImageDataset
     from torch.utils.data import DataLoader
+
+    from analysis.attention_visualizer import AttentionExtractor
+    from histodata import ImageDataset, create_dataset
 
     # Create model and extractor
     model = DAE_KAN_Attention()

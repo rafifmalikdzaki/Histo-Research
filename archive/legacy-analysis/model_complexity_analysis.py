@@ -6,23 +6,24 @@ and performance characteristics to determine if performance improvements are wor
 the extra computation.
 """
 
-import torch
-import torch.nn as nn
+import gc
+import json
+import time
+import warnings
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import time
 import psutil
-import gc
-from typing import Dict, List, Tuple, Optional, Union
-import json
+import seaborn as sns
+import torch
+import torch.nn as nn
+from fvcore.nn import ActivationCountAnalysis, FlopCountAnalysis
 from thop import profile
-from fvcore.nn import FlopCountAnalysis, ActivationCountAnalysis
-import warnings
+
 warnings.filterwarnings('ignore')
 
-from models.model import DAE_KAN_Attention, Autoencoder_Encoder, Autoencoder_Decoder, Autoencoder_Bottleneck
+from models.model import DAE_KAN_Attention
 
 
 class ModelComplexityAnalyzer:
@@ -36,7 +37,7 @@ class ModelComplexityAnalyzer:
         self.model.to(self.device)
         self.complexity_metrics = {}
 
-    def count_parameters(self, model: Optional[nn.Module] = None) -> Dict[str, int]:
+    def count_parameters(self, model: nn.Module | None = None) -> dict[str, int]:
         """
         Count parameters in the model with detailed breakdown
         """
@@ -82,7 +83,7 @@ class ModelComplexityAnalyzer:
             'breakdown': param_breakdown
         }
 
-    def compute_flops_macs(self, input_size: Tuple[int, ...] = (1, 3, 128, 128)) -> Dict[str, Union[int, float]]:
+    def compute_flops_macs(self, input_size: tuple[int, ...] = (1, 3, 128, 128)) -> dict[str, int | float]:
         """
         Compute FLOPs and MACs (Multiply-Accumulate operations)
         """
@@ -133,8 +134,8 @@ class ModelComplexityAnalyzer:
                 'activation_counts': {}
             }
 
-    def measure_memory_usage(self, input_size: Tuple[int, ...] = (1, 3, 128, 128),
-                           batch_sizes: List[int] = [1, 2, 4, 8, 16]) -> Dict[str, List]:
+    def measure_memory_usage(self, input_size: tuple[int, ...] = (1, 3, 128, 128),
+                           batch_sizes: list[int] = [1, 2, 4, 8, 16]) -> dict[str, list]:
         """
         Measure memory usage at different batch sizes
         """
@@ -222,10 +223,10 @@ class ModelComplexityAnalyzer:
 
         return memory_stats
 
-    def benchmark_inference_time(self, input_size: Tuple[int, ...] = (1, 3, 128, 128),
-                                batch_sizes: List[int] = [1, 2, 4, 8, 16],
+    def benchmark_inference_time(self, input_size: tuple[int, ...] = (1, 3, 128, 128),
+                                batch_sizes: list[int] = [1, 2, 4, 8, 16],
                                 num_runs: int = 100,
-                                warmup_runs: int = 10) -> Dict[str, List]:
+                                warmup_runs: int = 10) -> dict[str, list]:
         """
         Benchmark inference time across different batch sizes
         """
@@ -294,7 +295,7 @@ class ModelComplexityAnalyzer:
 
         return timing_stats
 
-    def analyze_layer_complexity(self, input_size: Tuple[int, ...] = (1, 3, 128, 128)) -> Dict[str, Dict]:
+    def analyze_layer_complexity(self, input_size: tuple[int, ...] = (1, 3, 128, 128)) -> dict[str, dict]:
         """
         Analyze complexity of individual layers
         """
@@ -356,7 +357,7 @@ class ModelComplexityAnalyzer:
 
         return layer_analysis
 
-    def comprehensive_complexity_analysis(self, input_size: Tuple[int, ...] = (1, 3, 128, 128)) -> Dict:
+    def comprehensive_complexity_analysis(self, input_size: tuple[int, ...] = (1, 3, 128, 128)) -> dict:
         """
         Run comprehensive complexity analysis
         """
@@ -400,7 +401,7 @@ class PerformanceBenchmark:
     def __init__(self, device: str = "cuda"):
         self.device = device
 
-    def create_baseline_models(self) -> Dict[str, nn.Module]:
+    def create_baseline_models(self) -> dict[str, nn.Module]:
         """
         Create baseline models for comparison
         """
@@ -465,7 +466,7 @@ class PerformanceBenchmark:
 
         return models
 
-    def benchmark_models(self, input_size: Tuple[int, ...] = (1, 3, 128, 128),
+    def benchmark_models(self, input_size: tuple[int, ...] = (1, 3, 128, 128),
                         num_runs: int = 50) -> pd.DataFrame:
         """
         Benchmark multiple models and return comparison results
@@ -512,7 +513,7 @@ class PerformanceBenchmark:
         return pd.DataFrame(results)
 
     def create_comparison_visualization(self, benchmark_df: pd.DataFrame,
-                                     save_path: Optional[str] = None):
+                                     save_path: str | None = None):
         """
         Create comprehensive comparison visualization
         """
@@ -574,7 +575,7 @@ class PerformanceBenchmark:
         plt.show()
 
     def generate_efficiency_report(self, benchmark_df: pd.DataFrame,
-                                 save_path: Optional[str] = None) -> str:
+                                 save_path: str | None = None) -> str:
         """
         Generate comprehensive efficiency analysis report
         """
@@ -598,21 +599,21 @@ class PerformanceBenchmark:
 
         # Most efficient model
         best_throughput = benchmark_df.loc[benchmark_df['throughput_imgs_per_sec'].idxmax()]
-        report.append(f"### Highest Throughput")
+        report.append("### Highest Throughput")
         report.append(f"- **Model**: {best_throughput['model']}")
         report.append(f"- **Throughput**: {best_throughput['throughput_imgs_per_sec']:.1f} images/second")
         report.append(f"- **Inference Time**: {best_throughput['inference_time_ms']:.2f} ms\n")
 
         # Most parameter efficient
         best_params = benchmark_df.loc[benchmark_df['total_parameters'].idxmin()]
-        report.append(f"### Fewest Parameters")
+        report.append("### Fewest Parameters")
         report.append(f"- **Model**: {best_params['model']}")
         report.append(f"- **Parameters**: {best_params['total_parameters']:,}")
         report.append(f"- **Model Size**: {best_params['model_size_mb']:.1f} MB\n")
 
         # Most compute efficient
         best_flops_per_sec = benchmark_df.loc[benchmark_df['flops_per_second'].idxmax()]
-        report.append(f"### Highest Compute Efficiency")
+        report.append("### Highest Compute Efficiency")
         report.append(f"- **Model**: {best_flops_per_sec['model']}")
         report.append(f"- **FLOPs/Second**: {best_flops_per_sec['flops_per_second']:.2e}")
         report.append(f"- **FLOPs**: {best_flops_per_sec['flops']:,}\n")
@@ -625,21 +626,21 @@ class PerformanceBenchmark:
 
         # Parameter overhead
         param_overhead = (dae_kan_row['total_parameters'] / simple_cnn_row['total_parameters'] - 1) * 100
-        report.append(f"### Parameter Overhead")
+        report.append("### Parameter Overhead")
         report.append(f"- **DAE-KAN**: {dae_kan_row['total_parameters']:,} parameters")
         report.append(f"- **Simple CNN**: {simple_cnn_row['total_parameters']:,} parameters")
         report.append(f"- **Overhead**: +{param_overhead:.1f}%\n")
 
         # Performance trade-off
         time_overhead = (dae_kan_row['inference_time_ms'] / simple_cnn_row['inference_time_ms'] - 1) * 100
-        report.append(f"### Performance Trade-off")
+        report.append("### Performance Trade-off")
         report.append(f"- **DAE-KAN**: {dae_kan_row['inference_time_ms']:.2f} ms")
         report.append(f"- **Simple CNN**: {simple_cnn_row['inference_time_ms']:.2f} ms")
         report.append(f"- **Time Overhead**: +{time_overhead:.1f}%\n")
 
         # Memory efficiency
         memory_overhead = (dae_kan_row['gpu_memory_mb'] / simple_cnn_row['gpu_memory_mb'] - 1) * 100
-        report.append(f"### Memory Usage")
+        report.append("### Memory Usage")
         report.append(f"- **DAE-KAN**: {dae_kan_row['gpu_memory_mb']:.1f} MB")
         report.append(f"- **Simple CNN**: {simple_cnn_row['gpu_memory_mb']:.1f} MB")
         report.append(f"- **Memory Overhead**: +{memory_overhead:.1f}%\n")

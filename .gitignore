@@ -17,6 +17,17 @@ auto_analysis/
 outputs/
 logs/
 
+# Regenerable pipeline outputs (tracked results/ files stay versioned)
+figures/
+tables/
+hf/
+results/clustering_summary_corrected.csv
+results/statistical_tests_corrected.csv
+
+# Local tool caches
+.pytest_cache/
+.ruff_cache/
+
 
 # JOIV revision: Hub-upload staging bulk (already on private Hub repos)
 joiv_revision/hf/dataset_staging/

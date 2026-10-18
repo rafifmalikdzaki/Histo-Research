@@ -5,20 +5,18 @@ This module provides tools to analyze and compare the performance of different
 KAN implementations, including training speed, memory usage, and model complexity.
 """
 
-import torch
 import time
-import psutil
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from typing import Dict, List, Tuple, Optional
-import pandas as pd
-from thop import profile
-from torch.profiler import profile as torch_profile, record_function, ProfilerActivity
 
-from models.model import DAE_KAN_Attention
-from histodata import create_dataset, ImageDataset
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import torch
+from thop import profile
 from torch.utils.data import DataLoader
+
+from histodata import ImageDataset, create_dataset
+from models.model import DAE_KAN_Attention
 
 
 class PerformanceAnalyzer:
@@ -30,7 +28,7 @@ class PerformanceAnalyzer:
         self.device = device
         self.results = {}
 
-    def measure_model_complexity(self, model: torch.nn.Module, input_size: Tuple[int, ...]) -> Dict:
+    def measure_model_complexity(self, model: torch.nn.Module, input_size: tuple[int, ...]) -> dict:
         """
         Measure FLOPs, parameters, and memory usage of the model
         """
@@ -58,7 +56,7 @@ class PerformanceAnalyzer:
 
     def measure_inference_time(self, model: torch.nn.Module,
                               dataloader: DataLoader,
-                              num_batches: int = 50) -> Dict:
+                              num_batches: int = 50) -> dict:
         """
         Measure inference speed and memory usage
         """
@@ -105,7 +103,7 @@ class PerformanceAnalyzer:
     def measure_training_performance(self, model: torch.nn.Module,
                                    train_loader: DataLoader,
                                    val_loader: DataLoader,
-                                   num_epochs: int = 3) -> Dict:
+                                   num_epochs: int = 3) -> dict:
         """
         Measure training performance including speed and memory usage
         """
@@ -169,9 +167,9 @@ class PerformanceAnalyzer:
         }
 
     def compare_kan_configurations(self,
-                                  grid_sizes: List[int] = [3, 5],
-                                  spline_orders: List[int] = [1, 2, 3],
-                                  input_size: Tuple[int, ...] = (3, 128, 128)) -> pd.DataFrame:
+                                  grid_sizes: list[int] = [3, 5],
+                                  spline_orders: list[int] = [1, 2, 3],
+                                  input_size: tuple[int, ...] = (3, 128, 128)) -> pd.DataFrame:
         """
         Compare different KAN configurations
         """
@@ -301,21 +299,21 @@ class PerformanceAnalyzer:
 
         # Fastest inference
         fastest = df.loc[df['mean_inference_time_ms'].idxmin()]
-        report.append(f"### Fastest Inference")
+        report.append("### Fastest Inference")
         report.append(f"- Grid Size: {fastest['grid_size']}, Spline Order: {fastest['spline_order']}")
         report.append(f"- Time: {fastest['mean_inference_time_ms']:.2f} ms")
         report.append(f"- Throughput: {fastest['throughput_ips']:.1f} images/sec\n")
 
         # Most memory efficient
         most_efficient = df.loc[df['peak_memory_mb'].idxmin()]
-        report.append(f"### Most Memory Efficient")
+        report.append("### Most Memory Efficient")
         report.append(f"- Grid Size: {most_efficient['grid_size']}, Spline Order: {most_efficient['spline_order']}")
         report.append(f"- Memory: {most_efficient['peak_memory_mb']:.1f} MB")
         report.append(f"- Parameters: {most_efficient['parameters']:,}\n")
 
         # Best overall efficiency
         best_efficiency = df.loc[df['efficiency_score'].idxmax()]
-        report.append(f"### Best Overall Efficiency")
+        report.append("### Best Overall Efficiency")
         report.append(f"- Grid Size: {best_efficiency['grid_size']}, Spline Order: {best_efficiency['spline_order']}")
         report.append(f"- Efficiency Score: {best_efficiency['efficiency_score']:.3f}")
         report.append(f"- FLOPs: {best_efficiency['flops']:,}")
@@ -350,7 +348,7 @@ class PerformanceAnalyzer:
         report.append("### For Maximum Accuracy")
         report.append(f"- Recommended: Grid Size {accuracy_best['grid_size']}, Spline Order {accuracy_best['spline_order']}")
         report.append(f"- FLOPs: {accuracy_best['flops']:,}")
-        report.append(f"- Note: Higher complexity may improve accuracy but reduces speed\n")
+        report.append("- Note: Higher complexity may improve accuracy but reduces speed\n")
 
         report_text = "\n".join(report)
 

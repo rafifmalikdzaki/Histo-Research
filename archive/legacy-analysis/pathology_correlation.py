@@ -5,14 +5,14 @@ This module provides tools to quantitatively analyze the correlation between
 model attention patterns and histopathologically relevant features.
 """
 
-import torch
-import torch.nn as nn
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Dict, List, Tuple, Optional, Union
-from skimage import filters, measure, morphology, segmentation
+import torch
+from skimage import measure
+
 try:
     from skimage.feature import greycomatrix, greycoprops
 except ImportError:
@@ -26,9 +26,10 @@ except ImportError:
         print("Warning: greycomatrix/greycoprops not available. Texture analysis will be disabled.")
         greycomatrix = None
         greycoprops = None
-from skimage.measure import regionprops
 import cv2
 from scipy import stats
+from skimage.measure import regionprops
+
 try:
     from sklearn.cluster import KMeans
     from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
@@ -40,11 +41,14 @@ except ImportError:
     normalized_mutual_info_score = None
     SKLEARN_AVAILABLE = False
 import warnings
+
 warnings.filterwarnings('ignore')
 
-from models.model import DAE_KAN_Attention
-from histodata import create_dataset, ImageDataset
 from torch.utils.data import DataLoader
+
+from histodata import ImageDataset, create_dataset
+from models.model import DAE_KAN_Attention
+
 try:
     from analysis.attention_visualizer import AttentionExtractor
 except ImportError:
@@ -63,7 +67,7 @@ class HistopathologyFeatureExtractor:
     def __init__(self):
         self.feature_names = []
 
-    def extract_nuclear_features(self, image: np.ndarray) -> Dict[str, np.ndarray]:
+    def extract_nuclear_features(self, image: np.ndarray) -> dict[str, np.ndarray]:
         """
         Extract nuclear features (nuclei detection, density, morphology)
         """
@@ -115,7 +119,7 @@ class HistopathologyFeatureExtractor:
 
         return nuclear_features
 
-    def extract_tissue_architecture_features(self, image: np.ndarray) -> Dict[str, np.ndarray]:
+    def extract_tissue_architecture_features(self, image: np.ndarray) -> dict[str, np.ndarray]:
         """
         Extract tissue architecture features (glands, stroma, texture)
         """
@@ -157,7 +161,7 @@ class HistopathologyFeatureExtractor:
 
         return architecture_features
 
-    def extract_color_features(self, image: np.ndarray) -> Dict[str, np.ndarray]:
+    def extract_color_features(self, image: np.ndarray) -> dict[str, np.ndarray]:
         """
         Extract color-based features (H&E staining patterns)
         """
@@ -197,7 +201,7 @@ class AttentionPathologyCorrelator:
 
     def compute_attention_feature_correlation(self, attention_map: np.ndarray,
                                             feature_map: np.ndarray,
-                                            method: str = 'pearson') -> Dict[str, float]:
+                                            method: str = 'pearson') -> dict[str, float]:
         """
         Compute correlation between attention and pathological features
         """
@@ -235,7 +239,7 @@ class AttentionPathologyCorrelator:
         }
 
     def compute_attention_overlap_with_regions(self, attention_map: np.ndarray,
-                                             region_mask: np.ndarray) -> Dict[str, float]:
+                                             region_mask: np.ndarray) -> dict[str, float]:
         """
         Compute how much attention overlaps with specific regions (e.g., nuclei, glands)
         """
@@ -274,7 +278,7 @@ class AttentionPathologyCorrelator:
             'total_attention_out_region': np.sum(attention_out_region)
         }
 
-    def analyze_sample_correlations(self, input_tensor: torch.Tensor) -> Dict[str, Dict]:
+    def analyze_sample_correlations(self, input_tensor: torch.Tensor) -> dict[str, dict]:
         """
         Comprehensive correlation analysis for a single sample
         """
@@ -404,7 +408,7 @@ class AttentionPathologyCorrelator:
         return pd.DataFrame(all_results)
 
     def visualize_correlations(self, correlation_df: pd.DataFrame,
-                             save_path: Optional[str] = None):
+                             save_path: str | None = None):
         """
         Create comprehensive visualization of correlation results
         """
@@ -497,7 +501,7 @@ class AttentionPathologyCorrelator:
         plt.show()
 
     def generate_correlation_report(self, correlation_df: pd.DataFrame,
-                                  save_path: Optional[str] = None) -> str:
+                                  save_path: str | None = None) -> str:
         """
         Generate comprehensive correlation analysis report
         """

@@ -5,16 +5,14 @@ This module provides comprehensive tools for visualizing and analyzing attention
 in the DAE-KAN model, including BAM attention and KAN activation patterns.
 """
 
-import torch
-import torch.nn as nn
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import cv2
-from typing import Dict, List, Tuple, Optional, Union
-from matplotlib.patches import Rectangle
+import torch
+import torch.nn as nn
 from matplotlib.gridspec import GridSpec
+
 # Optional imports that may not be available
 try:
     from sklearn.manifold import TSNE
@@ -35,8 +33,8 @@ except ImportError:
     umap = None
 
 try:
-    import plotly.graph_objects as go
     import plotly.express as px
+    import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 except ImportError:
     print("Warning: plotly not available. Interactive visualizations will be disabled.")
@@ -44,10 +42,10 @@ except ImportError:
     px = None
     make_subplots = None
 
-from models.model import DAE_KAN_Attention
-from models.attention_mechanisms.bam import BAM
-from histodata import create_dataset, ImageDataset
 from torch.utils.data import DataLoader
+
+from histodata import ImageDataset, create_dataset
+from models.model import DAE_KAN_Attention
 
 
 class AttentionExtractor:
@@ -61,7 +59,7 @@ class AttentionExtractor:
         self.model.to(self.device)
         self.attention_data = {}
 
-    def extract_bam_attention(self, input_tensor: torch.Tensor) -> Dict[str, np.ndarray]:
+    def extract_bam_attention(self, input_tensor: torch.Tensor) -> dict[str, np.ndarray]:
         """
         Extract spatial and channel attention from BAM layers
         """
@@ -105,7 +103,7 @@ class AttentionExtractor:
 
         return attentions
 
-    def extract_kan_activations(self, input_tensor: torch.Tensor) -> Dict[str, np.ndarray]:
+    def extract_kan_activations(self, input_tensor: torch.Tensor) -> dict[str, np.ndarray]:
         """
         Extract KAN activation patterns
         """
@@ -150,7 +148,7 @@ class AttentionExtractor:
 
         return activations
 
-    def extract_layer_features(self, input_tensor: torch.Tensor) -> Dict[str, np.ndarray]:
+    def extract_layer_features(self, input_tensor: torch.Tensor) -> dict[str, np.ndarray]:
         """
         Extract features from different encoder/decoder layers
         """
@@ -205,9 +203,9 @@ class AttentionVisualizer:
             'features': 'coolwarm'
         }
 
-    def plot_bam_attention(self, attention_data: Dict[str, np.ndarray],
+    def plot_bam_attention(self, attention_data: dict[str, np.ndarray],
                           original_image: np.ndarray,
-                          save_path: Optional[str] = None):
+                          save_path: str | None = None):
         """
         Visualize BAM attention patterns
         """
@@ -263,8 +261,8 @@ class AttentionVisualizer:
 
         plt.show()
 
-    def plot_kan_activations(self, kan_data: Dict[str, np.ndarray],
-                           save_path: Optional[str] = None):
+    def plot_kan_activations(self, kan_data: dict[str, np.ndarray],
+                           save_path: str | None = None):
         """
         Visualize KAN activation patterns
         """
@@ -319,8 +317,8 @@ class AttentionVisualizer:
 
         plt.show()
 
-    def plot_feature_evolution(self, feature_data: Dict[str, np.ndarray],
-                              save_path: Optional[str] = None):
+    def plot_feature_evolution(self, feature_data: dict[str, np.ndarray],
+                              save_path: str | None = None):
         """
         Visualize feature evolution through encoder-decoder pipeline
         """
@@ -379,8 +377,8 @@ class AttentionVisualizer:
 
         plt.show()
 
-    def plot_attention_statistics(self, attention_data: Dict[str, np.ndarray],
-                                layer_names: List[str], ax):
+    def plot_attention_statistics(self, attention_data: dict[str, np.ndarray],
+                                layer_names: list[str], ax):
         """
         Plot attention statistics
         """
@@ -423,9 +421,9 @@ class AttentionVisualizer:
         ax.legend(fontsize=8)
         ax.grid(True, alpha=0.3)
 
-    def create_interactive_attention_plot(self, attention_data: Dict[str, np.ndarray],
+    def create_interactive_attention_plot(self, attention_data: dict[str, np.ndarray],
                                          original_image: np.ndarray,
-                                         save_path: Optional[str] = None):
+                                         save_path: str | None = None):
         """
         Create interactive plot using Plotly
         """
@@ -509,7 +507,7 @@ class AttentionAnalyzer:
         concentration = np.sum(top_k_values) / (total_attention + 1e-8)
         return concentration
 
-    def analyze_attention_patterns(self, attention_data: Dict[str, np.ndarray]) -> Dict[str, Dict[str, float]]:
+    def analyze_attention_patterns(self, attention_data: dict[str, np.ndarray]) -> dict[str, dict[str, float]]:
         """
         Comprehensive analysis of attention patterns
         """
@@ -534,8 +532,8 @@ class AttentionAnalyzer:
 
         return analysis
 
-    def compare_attention_patterns(self, attention_data_list: List[Dict[str, np.ndarray]],
-                                 labels: List[str]) -> pd.DataFrame:
+    def compare_attention_patterns(self, attention_data_list: list[dict[str, np.ndarray]],
+                                 labels: list[str]) -> pd.DataFrame:
         """
         Compare attention patterns across multiple samples
         """

@@ -5,23 +5,20 @@ This module implements GradCAM specifically designed for autoencoder architectur
 and provides tools to visualize and analyze attention patterns in histopathology images.
 """
 
+import warnings
+
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-import cv2
-import matplotlib.pyplot as plt
-import seaborn as sns
-from typing import List, Dict, Tuple, Optional, Callable
-from pytorch_grad_cam import GradCAM, HiResCAM, ScoreCAM, GradCAMPlusPlus
-from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
-from pytorch_grad_cam.utils.image import show_cam_on_image
-import warnings
+
 warnings.filterwarnings('ignore')
 
-from models.model import DAE_KAN_Attention
-from histodata import create_dataset, ImageDataset
 from torch.utils.data import DataLoader
+
+from histodata import ImageDataset, create_dataset
+from models.model import DAE_KAN_Attention
 
 
 class AutoencoderGradCAM:
@@ -29,7 +26,7 @@ class AutoencoderGradCAM:
     Custom GradCAM implementation for autoencoder architectures
     """
 
-    def __init__(self, model: nn.Module, target_layers: List[nn.Module], use_cuda: bool = True):
+    def __init__(self, model: nn.Module, target_layers: list[nn.Module], use_cuda: bool = True):
         self.model = model
         self.target_layers = target_layers
         self.device = torch.device('cuda' if use_cuda and torch.cuda.is_available() else 'cpu')
@@ -56,7 +53,7 @@ class AutoencoderGradCAM:
             layer.register_backward_hook(backward_hook)
 
     def generate_cam(self, input_tensor: torch.Tensor,
-                    target_layers: Optional[List[nn.Module]] = None) -> Dict[nn.Module, np.ndarray]:
+                    target_layers: list[nn.Module] | None = None) -> dict[nn.Module, np.ndarray]:
         """
         Generate Class Activation Maps for target layers
         """
@@ -110,7 +107,7 @@ class AutoencoderGradCAM:
         return cams
 
     def generate_multi_scale_cam(self, input_tensor: torch.Tensor,
-                               scales: List[int] = [0.8, 1.0, 1.2]) -> Dict[str, np.ndarray]:
+                               scales: list[int] = [0.8, 1.0, 1.2]) -> dict[str, np.ndarray]:
         """
         Generate multi-scale CAMs for better analysis
         """
@@ -143,7 +140,7 @@ class DAEKANAnalyzer:
     Comprehensive analyzer for DAE-KAN model interpretability
     """
 
-    def __init__(self, model: Optional[nn.Module] = None, model_path: Optional[str] = None, device: str = "cuda"):
+    def __init__(self, model: nn.Module | None = None, model_path: str | None = None, device: str = "cuda"):
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
 
         if model is not None:
@@ -176,7 +173,7 @@ class DAEKANAnalyzer:
         print(f"Model loaded from {model_path}")
 
     def analyze_sample(self, input_image: torch.Tensor,
-                      save_path: Optional[str] = None) -> Dict:
+                      save_path: str | None = None) -> dict:
         """
         Comprehensive analysis of a single sample
         """
@@ -213,7 +210,7 @@ class DAEKANAnalyzer:
 
         return analysis_result
 
-    def extract_bam_attention(self, input_tensor: torch.Tensor) -> Dict[str, np.ndarray]:
+    def extract_bam_attention(self, input_tensor: torch.Tensor) -> dict[str, np.ndarray]:
         """
         Extract spatial and channel attention from BAM layers
         """
@@ -266,8 +263,8 @@ class DAEKANAnalyzer:
         ssim = ssim_num / ssim_den
         return torch.mean(ssim)
 
-    def visualize_analysis(self, analysis_result: Dict,
-                          save_path: Optional[str] = None):
+    def visualize_analysis(self, analysis_result: dict,
+                          save_path: str | None = None):
         """
         Create comprehensive visualization of analysis results
         """
@@ -351,7 +348,7 @@ class DAEKANAnalyzer:
 
         plt.show()
 
-    def save_analysis_results(self, analysis_result: Dict, save_path: str):
+    def save_analysis_results(self, analysis_result: dict, save_path: str):
         """Save analysis results to disk"""
         import pickle
         with open(save_path, 'wb') as f:
