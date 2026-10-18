@@ -52,6 +52,10 @@ Histopathological Images* (JOIV, decision letters 14 Oct 2026; 5-day window).
   flagged provisional (A7), and stated limits on specimen provenance (A1/B3),
   seed mapping (A4), capacity matching (A10), and magnification control.
   Comment matrix, reference audit, tables/figures plan staged.
+- gpu-kc verification round: Table II now instrumented (`profile_raw.csv`, all
+  7 variants; peak-memory column added); DEC arm restoration-verified
+  (`dec_verify_verdict.md`) with the extraction-jitter limitation stated in
+  manuscript + letter (A7 "provisional" flag lifted to metric-level verified).
 
 ### Gap results — banked
 Frozen ResNet-50 (treat-AMI 0.245 KMeans / 0.354 GMM), Cramér's V
@@ -127,5 +131,5 @@ Plateau k = 4–6 both models; k = 6 pre-registered, not tuned (peaks at k = 4�
 - `joiv_revision/LATEST_REVISION.md` (+ `.pdf`) — this document.
 - `joiv_revision/response/{comment_matrix,response_letter_draft,reference_audit}.md`
 - `joiv_revision/manuscript/{manuscript_master.md,manuscript_text.txt,JOIV_revised_v1.docx}`
-- `joiv_revision/results/{frozen_metrics.csv,frozen_summary.md,frozen_stats.csv,ksens/,scout20_verdict.md,dae_kan_recon_metrics.csv,dec_metrics_fresh.csv,gpukc_pull/}`
+- `joiv_revision/results/{frozen_metrics.csv,frozen_summary.md,frozen_stats.csv,ksens/,scout20_verdict.md,dae_kan_recon_metrics.csv,dec_metrics_fresh.csv,gpukc_pull/,profile_raw.csv,dec_verify_verdict.md}`
 - Hub: `pytholove/hepar-pannuke-joiv-rev` (dataset), `pytholove/dae-kan-attn-joiv-rev` (model), Collection `pytholove/joiv-revision-dae-kan-liver-histopathology-6ad38ddcc996ae6086599c23` — all private.

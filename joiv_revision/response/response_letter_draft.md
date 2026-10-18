@@ -79,17 +79,22 @@ through the identical eval path (minimum); SimCLR/BYOL/VAE (frozen ResNet-50 rep
 settings (leaky full-run vs a differently-normalised subset) that the text never
 distinguished. All numbers are now regenerated from one frozen pipeline; every
 reported value is cross-checked across abstract, body, tables, and figures by
-script (see validation log). The DEC-objective arm figures are reported from
-the completed 3-seed runs but flagged provisional pending
-checkpoint-restoration verification.
+script (see validation log). The DEC-objective arm is restoration-verified:
+re-extracting test embeddings from each run's `last.ckpt` reproduces the
+reported band (re-extract mean treatment-AMI 0.390 vs frozen 0.399; DBI 4.1–4.5
+in every restoration; `results/dec_verify_verdict.md`). Repeat extractions
+jitter (~14% of mean embedding norm) without leaving the metric band;
+exact-embedding determinism is reported as an open item.
 
 **A8 — Compute measurements.** One protocol on named hardware
-(gpu-kc, NVIDIA RTX 3060 12 GB): Table II reports inference ms/image,
-throughput, s per 1,000 patches, and parameter count, with the arithmetic
-identities (`1000/(ms per image) == images/s`) verified before tabulation;
-training wall-clock (~35 min per 10-epoch run, ~210 s/epoch) is reported as
-observed run time. Raw instrumented measurements (per-phase timers, peak
-memory) are still outstanding and no broader benchmark is claimed.
+(gpu-kc, NVIDIA RTX 3060 12 GB), instrumented with `profile_runtime.py`
+(batch size 8, all 7 variants; raw output in `results/profile_raw.csv`):
+Table II reports inference ms/image (baseline 28.7, full 36.9), throughput
+(34.9 / 27.1 images/s), s per 1,000 patches, parameter count (4.90M / 5.23M),
+and profiler peak GPU memory (627 / 566 MB), with the arithmetic identities
+(`1000/(ms per image) == images/s`) verified before tabulation; training
+wall-clock (~35 min per 10-epoch run, ~210 s/epoch) is reported as observed
+run time. No broader benchmark is claimed.
 
 **A9 — Notation.** ELU equation rewritten in standard form; Calinski–Harabasz
 typo fixed; all validity indices (Xie–Beni, Davies–Bouldin, Calinski–Harabasz,

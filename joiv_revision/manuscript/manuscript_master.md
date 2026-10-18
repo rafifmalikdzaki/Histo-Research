@@ -180,7 +180,7 @@ Table I reports KMeans results (k = 6, standardised + L2-normalised embeddings, 
 | no_eka | 0.039±0.005 | 4.94±0.35 | 169±17 | 8.90±1.96 | 0.416±0.015 | 0.243±0.010 | 0.454±0.020 |
 | DAE-KAN-Attn (full) | 0.036±0.006 | 5.32±0.72 | 166±6 | 11.44±1.68 | 0.433±0.012 | 0.279±0.034 | 0.478±0.022 |
 
-Enabling the DEC clustering objective on the full model (3 seeds, KMeans) improves every internal index substantially — Silhouette 0.036→0.040, Davies–Bouldin 5.32→4.19 (−21%, d = −1.7), Calinski–Harabasz 166→215 (+30%, d = +2.4), Xie–Beni 11.44→5.16 (−55%, d = −4.2, the largest effect in the study) — at a modest external cost (treatment-AMI 0.433→0.399, d = −1.4, with higher seed variance). None of these paired differences survives Holm correction at n = 3, but the effect sizes are uniformly large and in the separability direction. This is the mechanism the framework is built around: the objective trades a small amount of biological-label agreement for clearly better-separated clusters. Because evaluation uses the same 4096-dimensional bottleneck representation for both arms, the gain is attributable to the training objective rather than to a different embedding space.
+Enabling the DEC clustering objective on the full model (3 seeds, KMeans) improves every internal index substantially — Silhouette 0.036→0.040, Davies–Bouldin 5.32→4.19 (−21%, d = −1.7), Calinski–Harabasz 166→215 (+30%, d = +2.4), Xie–Beni 11.44→5.16 (−55%, d = −4.2, the largest effect in the study) — at a modest external cost (treatment-AMI 0.433→0.399, d = −1.4, with higher seed variance). None of these paired differences survives Holm correction at n = 3, but the effect sizes are uniformly large and in the separability direction. This is the mechanism the framework is built around: the objective trades a small amount of biological-label agreement for clearly better-separated clusters. Because evaluation uses the same 4096-dimensional bottleneck representation for both arms, the gain is attributable to the training objective rather than to a different embedding space. The DEC arm is restoration-verified: re-extracting test embeddings from each run's `last.ckpt` reproduces the reported band (re-extract mean treatment-AMI 0.390 vs frozen 0.399; DBI 4.1–4.5 in every restoration; `results/dec_verify_verdict.md`). Repeat extractions of one checkpoint jitter (~14% of mean embedding norm) without leaving the metric band — exact-embedding determinism is an open engineering item, noted under Limitations.
 
 ## C. Ablation Study
 
@@ -196,12 +196,12 @@ One protocol is used for all compute reporting (NVIDIA GeForce RTX 3060 12 GB, b
 
 **TABLE II. Profiling under one protocol (RTX 3060, batch size 8).**
 
-| Model | Params (M) | Inference (ms/image) | Throughput (images/s) | s per 1,000 patches |
-|---|---|---|---|---|
-| Baseline AE | 4.9 | 29.4 | 34.1 | 29.4 |
-| DAE-KAN-Attn (full) | 5.25 | 37.3 | 26.8 | 37.3 |
+| Model | Params (M) | Inference (ms/image) | Throughput (images/s) | s per 1,000 patches | Peak GPU mem (MB) |
+|---|---|---|---|---|---|
+| Baseline AE | 4.90 | 28.7 | 34.9 | 28.7 | 627 |
+| DAE-KAN-Attn (full) | 5.23 | 36.9 | 27.1 | 36.9 | 566 |
 
-The full model's overhead is +27% inference time for +7% parameters — a modest, honestly reported cost of the KAN and attention modules.
+Instrumented on the same RTX 3060 protocol (batch size 8; `profile_runtime.py`, all 7 variants in `results/profile_raw.csv`). The full model's overhead is +29% inference time for +7% parameters — a modest, honestly reported cost of the KAN and attention modules.
 
 ## F. Contemporary Baseline and Biological Association
 
@@ -235,7 +235,7 @@ Single-centre cohort (≈196 specimens); magnification correlates with treatment
 in the cohort, which is why the stratified analysis is primary, not
 supplementary. No geometric/colour augmentation was used in the reported runs.
 Pathologist scoring of cluster montages is exported with a structured scoring template but outstanding at submission; this work reports enrichment statistics and plainly labels expert validation as a limitation.
-A frozen ImageNet encoder baseline is reported (§III-F); full SimCLR/BYOL/VAE training through the identical eval path is left to an extended benchmark, alongside multi-centre validation and stain-normalisation ablations. The DEC objective, while improving separability on the evaluated bottleneck representation, is unstable in its own 128-d latent space across seeds (latent Silhouette 0.03–0.36, treatment-AMI 0.20–0.38): centroid initialisation sensitivity in DEC-style training is a real phenomenon in our hands and is reported rather than tuned away.
+A frozen ImageNet encoder baseline is reported (§III-F); full SimCLR/BYOL/VAE training through the identical eval path is left to an extended benchmark, alongside multi-centre validation and stain-normalisation ablations. Test-embedding extraction is run-to-run nondeterministic at fixed weights (~14% of mean embedding norm between repeats; cluster metrics stay in band) — the likely source is nondeterministic forward kernels, still unlocalised. The DEC objective, while improving separability on the evaluated bottleneck representation, is unstable in its own 128-d latent space across seeds (latent Silhouette 0.03–0.36, treatment-AMI 0.20–0.38): centroid initialisation sensitivity in DEC-style training is a real phenomenon in our hands and is reported rather than tuned away.
 
 # V. Conclusion
 
