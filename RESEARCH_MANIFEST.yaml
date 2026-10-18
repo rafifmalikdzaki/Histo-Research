@@ -1,4 +1,4 @@
-# refreshed: 2026-10-18 | git: 8d0612a
+# refreshed: 2026-10-18 | git: cf16d5d
 # Research manifest — single trackable inventory for the JOIV revision.
 # Refresh: python scripts/researcher.py refresh
 # Validate: python scripts/researcher.py check
@@ -65,10 +65,11 @@ revision_checklist:
   reviewer_b: "B1-B5 map onto A3/A5/A7/A8/A1/A6/A10 (see response letter)"
 open_items:
   - "scout20 verdict -> optional 3-seed 20-epoch confirmation + refreeze"
-  - "bulk curated Hub upload (sweep script) -> confirm sweep/frozen + runs on model repo"
   - "JOIV portal status (user) — 5-day window landed 2026-10-19"
   - "pathologist scoring (user/expert) — montages + template exported"
   - "print-resolution figures + JOIV template tracked-changes copy (production)"
+closed_items:
+  - "bulk curated Hub upload — DONE (168 files: sweep/recon 135, sweep/dec_on 25, sweep/frozen 6, code bundle)"
 key_documents:
   audit: joiv_revision/LATEST_REVISION.md
   response_letter: joiv_revision/response/response_letter_draft.md
