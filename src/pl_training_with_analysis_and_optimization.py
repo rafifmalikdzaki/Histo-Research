@@ -645,7 +645,8 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule,
                 # Cleanup
                 self.auto_analyzer.cleanup()
 
-if __name__ == '__main__':
+def main():
+    """Train entrypoint (also installed as `histodae-train`)."""
     import argparse
 
     import pandas as pd
@@ -828,7 +829,6 @@ if __name__ == '__main__':
         drop_last=False
     )
 
-if __name__ == "__main__":
     # Test data loading
     x, y = next(iter(train_loader))
     print(f"Data loading successful. Batch shape: {x.shape}")
@@ -970,3 +970,7 @@ if __name__ == "__main__":
     wandb.finish()
     gc.collect()
     torch.cuda.empty_cache()
+
+
+if __name__ == "__main__":
+    main()

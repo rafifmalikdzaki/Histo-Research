@@ -58,9 +58,10 @@ py-modules = ["histodata", "metadata", "clustering_metrics", "clustering_objecti
               "run_corrected_pipeline", "run_clustering_analysis",
               "compute_statistical_significance", "generate_clustering_plots",
               "generate_latex_tables", "evaluate_stats", "create_hepar_csv",
-              "create_pannuke_csv"]
+              "create_pannuke_csv", "pl_training_with_analysis_and_optimization"]
 
 [project.scripts]
+histodae-train = "pl_training_with_analysis_and_optimization:main"
 histodae-pipeline = "run_corrected_pipeline:main"
 histodae-cluster = "run_clustering_analysis:main"
 histodae-stats = "compute_statistical_significance:main"
@@ -72,7 +73,7 @@ histodae-make-pannuke-csv = "create_pannuke_csv:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["models*", "utils*"]
+include = ["models*", "utils*", "analysis*", "training*", "histodae"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
