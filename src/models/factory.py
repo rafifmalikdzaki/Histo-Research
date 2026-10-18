@@ -1,11 +1,12 @@
-from .model import DAE_KAN_Attention
-from .model_baseline import BaselineDAE_KAN_Attention
-from .model_bam_only import BAMOnly_DAE_KAN_Attention
-from .model_kan_only import KANOnly_DAE_KAN_Attention
-from .model_no_bam import NoBAM_DAE_KAN_Attention
-from .model_no_kan import NoKAN_DAE_KAN_Attention
-from .model_no_eka import NoEKA_DAE_KAN_Attention
-
+from .dae import (
+    BAMOnly_DAE_KAN_Attention,
+    BaselineDAE_KAN_Attention,
+    DAE_KAN_Attention,
+    KANOnly_DAE_KAN_Attention,
+    NoBAM_DAE_KAN_Attention,
+    NoEKA_DAE_KAN_Attention,
+    NoKAN_DAE_KAN_Attention,
+)
 
 MODELS = {
     "dae_kan_attention": DAE_KAN_Attention,
