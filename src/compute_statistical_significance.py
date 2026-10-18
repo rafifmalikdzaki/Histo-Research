@@ -24,10 +24,9 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ttest_rel, wilcoxon
 
-# Single source of truth for the paired-d estimator (re-exported here so
-# `from src.compute_statistical_significance import compute_cohens_d` keeps
-# working).
-from utils.stats import compute_cohens_d
+# Single source of truth for shared stats helpers (re-exported here so
+# `from src.compute_statistical_significance import ...` keeps working).
+from utils.stats import compute_cohens_d, format_mean_std
 
 
 def load_results(input_path: str) -> pd.DataFrame:
@@ -290,13 +289,6 @@ def apply_holm_correction(tests_df: pd.DataFrame, alpha: float = 0.05) -> pd.Dat
         df.loc[idx, "wilcoxon_significant_holm"] = w_sig
 
     return df
-
-
-def format_mean_std(mean: float, std: float, decimals: int = 4) -> str:
-    """Format mean ± std as string."""
-    if np.isnan(mean) or np.isnan(std):
-        return "N/A"
-    return f"{mean:.{decimals}f} ± {std:.{decimals}f}"
 
 
 def generate_summary_table(summary_df: pd.DataFrame) -> str:

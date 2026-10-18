@@ -34,9 +34,9 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ttest_rel, wilcoxon
 
-# Single source of truth for the paired-d estimator (re-exported here so
-# `from src.evaluate_stats import compute_cohens_d` keeps working).
-from utils.stats import compute_cohens_d
+# Single source of truth for shared stats helpers (re-exported here so
+# `from src.evaluate_stats import ...` keeps working).
+from utils.stats import compute_cohens_d, format_mean_std
 
 # Default seeds matching multi-seed runner
 DEFAULT_SEEDS = [42, 123, 456, 789, 1011]
@@ -389,13 +389,6 @@ def create_summary_table(
     print(f"✅ Summary table saved to: {output_path}")
 
     return df
-
-
-def format_mean_std(mean: float, std: float) -> str:
-    """Format mean ± std as a string."""
-    if mean is None or std is None:
-        return "N/A"
-    return f"{mean:.4f} ± {std:.4f}"
 
 
 def print_summary_report(

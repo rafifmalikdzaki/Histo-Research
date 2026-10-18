@@ -8,7 +8,7 @@ present in only one copy). Import from here instead of duplicating.
 
 import numpy as np
 
-__all__ = ["compute_cohens_d"]
+__all__ = ["compute_cohens_d", "format_mean_std"]
 
 
 def compute_cohens_d(group1, group2) -> float:
@@ -40,3 +40,16 @@ def compute_cohens_d(group1, group2) -> float:
         return 0.0
 
     return float(np.mean(diffs) / sd)
+
+
+def format_mean_std(mean: float, std: float, decimals: int = 4) -> str:
+    """Format mean ± std as a string; "N/A" for missing values.
+
+    Accepts both ``None`` and ``NaN`` as missing (one historical copy
+    crashed with ``TypeError`` on ``None`` via a bare ``np.isnan`` check).
+    """
+    if mean is None or std is None:
+        return "N/A"
+    if np.isnan(mean) or np.isnan(std):
+        return "N/A"
+    return f"{mean:.{decimals}f} ± {std:.{decimals}f}"

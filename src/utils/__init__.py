@@ -21,7 +21,7 @@ from .reproducibility import (
     save_json,
     set_seed,
 )
-from .stats import compute_cohens_d
+from .stats import compute_cohens_d, format_mean_std
 from .wandb_utils import (
     check_wandb_login,
     format_run_name,
@@ -48,6 +48,7 @@ __all__ = [
     'get_experiment_config_from_dir',
     # Statistics
     'compute_cohens_d',
+    'format_mean_std',
     # W&B utilities
     'get_wandb_config',
     'get_group_for_model',

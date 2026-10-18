@@ -30,3 +30,14 @@ def test_degenerate_arms_return_zero():
     assert shared.compute_cohens_d([1.0], [2.0]) == 0.0  # < 2 pairs
     assert shared.compute_cohens_d([1.0, 2.0], [1.0]) == 0.0  # unequal arms
     assert shared.compute_cohens_d([1.0, 1.0], [1.0, 1.0]) == 0.0  # zero spread
+
+
+def test_format_mean_std_shared_and_none_safe():
+    assert ev.format_mean_std is shared.format_mean_std
+    assert sig.format_mean_std is shared.format_mean_std
+    assert shared.format_mean_std(0.5, 0.12345) == "0.5000 ± 0.1235"
+    assert shared.format_mean_std(0.5, 0.12345, 2) == "0.50 ± 0.12"
+    assert shared.format_mean_std(None, 0.1) == "N/A"
+    assert shared.format_mean_std(0.5, None) == "N/A"
+    assert shared.format_mean_std(float("nan"), 0.1) == "N/A"
+    assert shared.format_mean_std(0.5, float("nan")) == "N/A"
