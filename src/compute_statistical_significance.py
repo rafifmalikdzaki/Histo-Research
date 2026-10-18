@@ -13,6 +13,7 @@ Usage:
 """
 
 import argparse
+import ast
 import sys
 import warnings
 from pathlib import Path
@@ -57,10 +58,13 @@ def compute_summary_statistics(df: pd.DataFrame) -> pd.DataFrame:
                 values = group[metric].dropna()
                 if len(values) > 0:
                     row[f'{metric}_mean'] = float(values.mean())
-                    row[f'{metric}_std'] = float(values.std()) if len(values) > 1 else 0.0
+                    row[f'{metric}_std'] = float(values.std(ddof=1)) if len(values) > 1 else 0.0
                     row[f'{metric}_min'] = float(values.min())
                     row[f'{metric}_max'] = float(values.max())
                     row[f'{metric}_values'] = str(values.tolist())
+                    # Seeds parallel to values; required for seed-aligned
+                    # pairing in run_statistical_tests (never pair positionally).
+                    row[f'{metric}_seeds'] = str(group.loc[values.index, 'seed'].tolist()) if 'seed' in group.columns else '[]'
                 else:
                     row[f'{metric}_mean'] = np.nan
                     row[f'{metric}_std'] = np.nan
@@ -74,20 +78,79 @@ def compute_summary_statistics(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_cohens_d(group1: np.ndarray, group2: np.ndarray) -> float:
-    """Compute Cohen's d effect size."""
-    n1, n2 = len(group1), len(group2)
-    if n1 < 2 or n2 < 2:
+    """Compute the paired Cohen's d effect size (d_z).
+
+    Inputs are seed-aligned pairs (see run_statistical_tests), so the
+    estimator is the mean paired difference over the standard deviation of
+    the differences — not the independent-groups pooled standard deviation.
+    """
+    arr1 = np.asarray(group1, dtype=float)
+    arr2 = np.asarray(group2, dtype=float)
+    if len(arr1) != len(arr2) or len(arr1) < 2:
+        # Unequal arms cannot be paired elementwise (broadcasting would
+        # silently compute garbage); callers must align by seed first.
+        return 0.0
+    diffs = arr1 - arr2
+    sd = np.std(diffs, ddof=1)
+
+    if sd == 0 or np.isnan(sd):
         return 0.0
 
-    mean1, mean2 = np.mean(group1), np.mean(group2)
-    var1, var2 = np.var(group1, ddof=1), np.var(group2, ddof=1)
+    return float(np.mean(diffs) / sd)
 
-    pooled_std = np.sqrt(((n1 - 1) * var1 + (n2 - 1) * var2) / (n1 + n2 - 2))
 
-    if pooled_std == 0 or np.isnan(pooled_std):
-        return 0.0
+def _parse_literal_list(cell) -> list:
+    """Safely parse a stringified list cell (never eval())."""
+    if isinstance(cell, list):
+        return list(cell)
+    if cell is None or (isinstance(cell, float) and np.isnan(cell)):
+        return []
+    try:
+        parsed = ast.literal_eval(cell)
+    except (ValueError, SyntaxError):
+        return []
+    return list(parsed) if isinstance(parsed, (list, tuple)) else []
 
-    return (mean1 - mean2) / pooled_std
+
+def _mean_per_seed(values: list, seeds: list) -> dict:
+    """Collapse duplicate-seed rows to one mean value per seed."""
+    buckets: dict = {}
+    for value, seed in zip(values, seeds):
+        buckets.setdefault(seed, []).append(float(value))
+    return {seed: float(np.mean(v)) for seed, v in buckets.items()}
+
+
+def _align_seed_pairs(model_name: str, baseline_model: str, method: str,
+                      metric: str, model_values: list, model_seeds: list,
+                      baseline_values: list, baseline_seeds: list) -> tuple[list, list]:
+    """Align two arms into seed-matched pairs for paired tests.
+
+    Never truncates positionally: pairs are formed on shared seeds only, and
+    anything unpairable is reported and skipped.
+    """
+    if model_seeds and baseline_seeds:
+        if len(model_seeds) != len(model_values) or \
+                len(baseline_seeds) != len(baseline_values):
+            print(f"⚠️  Seed tags out of sync for {model_name}/{metric}; skipping")
+            return [], []
+        map_a = _mean_per_seed(model_values, model_seeds)
+        map_b = _mean_per_seed(baseline_values, baseline_seeds)
+        shared = sorted(set(map_a) & set(map_b))
+        dropped = (len(map_a) + len(map_b)) - 2 * len(shared)
+        if dropped:
+            print(f"ℹ️  {model_name} vs {baseline_model} {method}/{metric}: "
+                  f"{dropped} unpaired seed value(s) excluded, "
+                  f"{len(shared)} pair(s) kept")
+        return [map_a[s] for s in shared], [map_b[s] for s in shared]
+    if not model_seeds and not baseline_seeds:
+        # Legacy summary rows without seed tags: positional pairing is only
+        # valid at equal length.
+        if len(model_values) != len(baseline_values):
+            print(f"⚠️  Untagged unequal arms for {model_name}/{metric}; skipping")
+            return [], []
+        return list(model_values), list(baseline_values)
+    print(f"⚠️  Seed tags present on one arm only for {model_name}/{metric}; skipping")
+    return [], []
 
 
 def run_statistical_tests(
@@ -124,15 +187,19 @@ def run_statistical_tests(
                 continue
 
             try:
-                model_values = eval(model_row[values_col])
-                baseline_values = eval(baseline_row[values_col])
+                model_values = _parse_literal_list(model_row[values_col])
+                baseline_values = _parse_literal_list(baseline_row[values_col])
+                model_seeds = _parse_literal_list(
+                    model_row.get(f'{metric}_seeds', '[]'))
+                baseline_seeds = _parse_literal_list(
+                    baseline_row.get(f'{metric}_seeds', '[]'))
+
+                model_values, baseline_values = _align_seed_pairs(
+                    model_name, baseline_model, method, metric,
+                    model_values, model_seeds, baseline_values, baseline_seeds)
 
                 if len(model_values) < 2 or len(baseline_values) < 2:
                     continue
-
-                min_len = min(len(model_values), len(baseline_values))
-                model_values = model_values[:min_len]
-                baseline_values = baseline_values[:min_len]
 
                 model_arr = np.array(model_values)
                 baseline_arr = np.array(baseline_values)

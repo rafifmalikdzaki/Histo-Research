@@ -360,9 +360,13 @@ def compute_cohens_d(group1: list[float], group2: list[float]) -> float:
     Returns:
         Paired Cohen's d value
     """
-    diffs = np.asarray(group1, dtype=float) - np.asarray(group2, dtype=float)
-    if len(diffs) < 2:
+    arr1 = np.asarray(group1, dtype=float)
+    arr2 = np.asarray(group2, dtype=float)
+    if len(arr1) != len(arr2) or len(arr1) < 2:
+        # Unequal arms cannot be paired elementwise (broadcasting would
+        # silently compute garbage); callers must align by seed first.
         return 0.0
+    diffs = arr1 - arr2
     sd = np.std(diffs, ddof=1)
 
     if sd == 0:
