@@ -24,6 +24,11 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ttest_rel, wilcoxon
 
+# Single source of truth for the paired-d estimator (re-exported here so
+# `from src.compute_statistical_significance import compute_cohens_d` keeps
+# working).
+from utils.stats import compute_cohens_d
+
 
 def load_results(input_path: str) -> pd.DataFrame:
     """Load raw clustering metrics CSV."""
@@ -75,28 +80,6 @@ def compute_summary_statistics(df: pd.DataFrame) -> pd.DataFrame:
         summary_rows.append(row)
 
     return pd.DataFrame(summary_rows)
-
-
-def compute_cohens_d(group1: np.ndarray, group2: np.ndarray) -> float:
-    """Compute the paired Cohen's d effect size (d_z).
-
-    Inputs are seed-aligned pairs (see run_statistical_tests), so the
-    estimator is the mean paired difference over the standard deviation of
-    the differences — not the independent-groups pooled standard deviation.
-    """
-    arr1 = np.asarray(group1, dtype=float)
-    arr2 = np.asarray(group2, dtype=float)
-    if len(arr1) != len(arr2) or len(arr1) < 2:
-        # Unequal arms cannot be paired elementwise (broadcasting would
-        # silently compute garbage); callers must align by seed first.
-        return 0.0
-    diffs = arr1 - arr2
-    sd = np.std(diffs, ddof=1)
-
-    if sd == 0 or np.isnan(sd):
-        return 0.0
-
-    return float(np.mean(diffs) / sd)
 
 
 def _parse_literal_list(cell) -> list:

@@ -34,6 +34,10 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ttest_rel, wilcoxon
 
+# Single source of truth for the paired-d estimator (re-exported here so
+# `from src.evaluate_stats import compute_cohens_d` keeps working).
+from utils.stats import compute_cohens_d
+
 # Default seeds matching multi-seed runner
 DEFAULT_SEEDS = [42, 123, 456, 789, 1011]
 
@@ -343,36 +347,6 @@ def compute_statistical_tests(
             }
 
     return results
-
-
-def compute_cohens_d(group1: list[float], group2: list[float]) -> float:
-    """
-    Compute the paired Cohen's d effect size (d_z).
-
-    The callers always pass seed-aligned pairs, so the correct estimator is
-    the mean paired difference over the standard deviation of the
-    differences — not the independent-groups pooled standard deviation.
-
-    Args:
-        group1: First group values (paired with group2 by seed)
-        group2: Second group values (paired with group1 by seed)
-
-    Returns:
-        Paired Cohen's d value
-    """
-    arr1 = np.asarray(group1, dtype=float)
-    arr2 = np.asarray(group2, dtype=float)
-    if len(arr1) != len(arr2) or len(arr1) < 2:
-        # Unequal arms cannot be paired elementwise (broadcasting would
-        # silently compute garbage); callers must align by seed first.
-        return 0.0
-    diffs = arr1 - arr2
-    sd = np.std(diffs, ddof=1)
-
-    if sd == 0:
-        return 0.0
-
-    return float(np.mean(diffs) / sd)
 
 
 def create_summary_table(

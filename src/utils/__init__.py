@@ -21,6 +21,7 @@ from .reproducibility import (
     save_json,
     set_seed,
 )
+from .stats import compute_cohens_d
 from .wandb_utils import (
     check_wandb_login,
     format_run_name,
@@ -45,6 +46,8 @@ __all__ = [
     'get_default_hyperparameters',
     'create_experiment_config',
     'get_experiment_config_from_dir',
+    # Statistics
+    'compute_cohens_d',
     # W&B utilities
     'get_wandb_config',
     'get_group_for_model',
