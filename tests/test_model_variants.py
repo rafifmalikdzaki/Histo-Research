@@ -8,6 +8,7 @@ pin the structure so refactors cannot silently change it:
 * total parameter counts match the audited table below.
 """
 
+import pytest
 import torch
 
 from src.models.dae import VARIANT_CONFIGS, DualAutoencoder
@@ -79,3 +80,43 @@ def test_variant_configs_differ():
         VARIANT_CONFIGS
     )
     assert issubclass(MODELS["dae_kan_attention"], DualAutoencoder)
+
+
+def test_kan_blocks_honor_device_arg():
+    """KAN conv layers must live on the requested device at construction.
+
+    The `device` argument used to be silently ignored (params stayed on CPU
+    until an outer .to() moved them).
+    """
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA unavailable")
+    torch.manual_seed(0)
+    model = MODELS["dae_kan_attention"](device="cuda")
+    for name, p in model.named_parameters():
+        assert p.device.type == "cuda", name
+    for name, b in model.named_buffers():
+        assert b.device.type == "cuda", name
+
+
+def test_decoder_stage1_skips_are_live():
+    """Stage-1 residuals must reach the stage-2 decoder output.
+
+    Regression test for the wired-up skip connections (the original code left
+    `+ residualEnc1/2` commented out, so the taps were silently dropped):
+    zeroing or perturbing a tap must move the reconstruction.
+    """
+    torch.manual_seed(0)
+    model = MODELS["dae_kan_attention"](device="cpu").eval()
+    x = torch.randn(1, 3, 128, 128)
+    with torch.no_grad():
+        encoded, r1, r2 = model.ae_encoder(x)
+        stage_out, _ = model.bottleneck(encoded)
+        assert r1.shape == (1, 384, 64, 64)
+        assert r2.shape == (1, 128, 32, 32)
+        y_skips = model.ae_decoder(stage_out, r1, r2)
+        y_zeros = model.ae_decoder(
+            stage_out, torch.zeros_like(r1), torch.zeros_like(r2))
+        y_pert = model.ae_decoder(stage_out, r1 + 1.0, r2)
+    assert y_skips.shape == (1, 3, 128, 128)
+    assert not torch.allclose(y_skips, y_zeros, atol=1e-6)
+    assert not torch.allclose(y_skips, y_pert, atol=1e-6)

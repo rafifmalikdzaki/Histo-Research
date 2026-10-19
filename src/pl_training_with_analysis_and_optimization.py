@@ -67,6 +67,7 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule,
         self.dec_loss = None
         self._latent_pool = []          # rolling buffer for KMeans centroid init
         self._latent_pool_cap = 2000
+        self._head_optimised = False    # set once head params join the optimizer
         if self.cluster_weight > 0:
             self.latent_head = LatentProjectionHead(self.latent_dim)
             self.dec_loss = DECClusteringLoss(self.n_clusters, self.latent_dim)
@@ -83,8 +84,10 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule,
                       f"n_clusters={self.n_clusters}, cluster_weight={self.cluster_weight}, "
                       f"warmup={self.cluster_warmup_epochs} epochs")
             except Exception as e:
-                print(f"⚠ Could not pre-build latent head ({e}); will build lazily. "
-                      f"Ensure optimizer includes latent_head params.")
+                # Lazy fallback: the head builds on its first real forward and
+                # _ensure_head_optimised() registers it with the optimizer then.
+                print(f"⚠ Could not pre-build latent head ({e}); will build lazily "
+                      f"and register via the training-step safety net.")
         self.analysis_frequency = analysis_frequency  # Run full analysis every N batches
         self.attention_components_frequency = attention_components_frequency  # Save detailed components every N batches
         self.max_embeddings_to_store = max_embeddings_to_store  # Limit embedding storage
@@ -199,6 +202,31 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule,
         encoded, decoded, z = self.model(x)
         return encoded, decoded, z
 
+    def _ensure_head_optimised(self) -> None:
+        """Register lazily-built head params with the optimizer (safety net).
+
+        The projection head is normally pre-built in ``__init__`` (probed with
+        a zeros batch) before ``configure_optimizers()`` runs, making this a
+        no-op. If pre-build failed, the head materialises on its first real
+        forward — after the optimizer exists — and without this its weights
+        would silently never train. Retried every step until registered, so a
+        missing trainer (e.g. manual calls) simply defers.
+        """
+        if self._head_optimised or self.latent_head is None:
+            return
+        if not list(self.latent_head.parameters()):
+            return  # head not built yet; nothing to register
+        trainer = getattr(self, "trainer", None)
+        optimizers = list(getattr(trainer, "optimizers", None) or [])
+        if not optimizers:
+            return
+        for opt in optimizers:
+            known = {id(p) for group in opt.param_groups for p in group["params"]}
+            missing = [p for p in self.latent_head.parameters() if id(p) not in known]
+            if missing:
+                opt.add_param_group({"params": missing})
+        self._head_optimised = True
+
     def training_step(self, batch, batch_idx):
         # Track training time
         training_start_time = time.perf_counter()
@@ -236,6 +264,7 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule,
         loss = self.recon_weight * mse_loss
         cluster_loss_val = 0.0
         if self.cluster_weight > 0 and self.latent_head is not None:
+            self._ensure_head_optimised()
             latent = self.latent_head(z)
             # Maintain a rolling latent pool for centroid initialisation.
             if not self.dec_loss.initialised:

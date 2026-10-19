@@ -15,6 +15,10 @@ Module attribute names and sub-layer order intentionally mirror the original
 per-variant files, so existing checkpoints keep loading with ``strict=True``.
 """
 
+from __future__ import annotations
+
+from typing import Literal
+
 import torch
 import torch.nn as nn
 
@@ -23,13 +27,20 @@ from .kan_convolutional.efficient_kan_conv_fixed import (
     KAN_Convolutional_Layer as KANCL,
 )
 
-KAN_MODES = ("kan", "conv", "conv_bam", "efficient")
-ATTN_MODES = ("bam", "gate", "plain", "none")
+KanKind = Literal["kan", "conv", "conv_bam", "efficient"]
+AttnMode = Literal["bam", "gate", "plain", "none"]
+
+KAN_MODES: tuple[str, ...] = ("kan", "conv", "conv_bam", "efficient")
+ATTN_MODES: tuple[str, ...] = ("bam", "gate", "plain", "none")
 
 
 def conv_bn_elu(in_ch: int, out_ch: int, kernel_size: int = 3, stride: int = 1,
                 padding: int = 1) -> nn.Sequential:
-    """Standard Conv-BatchNorm-ELU stack used throughout encoder/decoder."""
+    """Standard Conv-BatchNorm-ELU stack used throughout encoder/decoder.
+
+    Maps ``[B, in_ch, H, W] -> [B, out_ch, H', W']`` where ``H'``/``W'`` follow
+    the usual conv arithmetic for ``stride``/``padding``.
+    """
     return nn.Sequential(
         nn.Conv2d(in_ch, out_ch, kernel_size=kernel_size, stride=stride,
                   padding=padding),
@@ -40,7 +51,11 @@ def conv_bn_elu(in_ch: int, out_ch: int, kernel_size: int = 3, stride: int = 1,
 
 def deconv_bn_elu(in_ch: int, out_ch: int, kernel_size: int = 3, stride: int = 2,
                   padding: int = 1, output_padding: int = 1) -> nn.Sequential:
-    """Standard ConvTranspose-BatchNorm-ELU stack."""
+    """Standard ConvTranspose-BatchNorm-ELU stack (upsamples when ``stride=2``).
+
+    Maps ``[B, in_ch, H, W] -> [B, out_ch, H', W']`` (with the defaults,
+    ``H' = 2*H``, ``W' = 2*W``).
+    """
     return nn.Sequential(
         nn.ConvTranspose2d(in_ch, out_ch, kernel_size=kernel_size, stride=stride,
                            padding=padding, output_padding=output_padding),
@@ -69,10 +84,15 @@ class EfficientConvBlock(nn.Module):
         return self.conv(x)
 
 
-def make_kan_block(kind: str, in_ch: int, out_ch: int, kernel_size: int = 3,
-                   padding: int = 1, grid_size: int = 3, spline_order: int = 2,
+def make_kan_block(kind: KanKind, in_ch: int, out_ch: int,
+                   kernel_size: int = 3, padding: int = 1,
+                   grid_size: int = 3, spline_order: int = 2,
                    device: str = "cpu") -> nn.Module:
-    """Build the interchangeable ``kan`` / ``reconstruction`` block."""
+    """Build the interchangeable ``kan`` / ``reconstruction`` block.
+
+    All variants preserve ``[B, in_ch, H, W] -> [B, out_ch, H, W]`` for the
+    kernel/padding combinations used by the model family.
+    """
     if kind == "kan":
         return KANCL(
             in_channels=in_ch,
@@ -90,6 +110,8 @@ def make_kan_block(kind: str, in_ch: int, out_ch: int, kernel_size: int = 3,
             kernel_size=kernel_size,
             padding=padding,
         )
+    if kind not in ("conv", "conv_bam"):
+        raise ValueError(f"Unknown kan block kind: {kind!r} (expected one of {KAN_MODES})")
     block = nn.Sequential(
         nn.Conv2d(in_ch, out_ch, kernel_size=kernel_size, padding=padding),
         nn.BatchNorm2d(out_ch),
@@ -97,13 +119,16 @@ def make_kan_block(kind: str, in_ch: int, out_ch: int, kernel_size: int = 3,
     )
     if kind == "conv_bam":
         block.append(BAM(out_ch))
-    elif kind != "conv":
-        raise ValueError(f"Unknown kan block kind: {kind!r} (expected one of {KAN_MODES})")
     return block
 
 
-def make_bottleneck_attn(mode: str, channels: int) -> nn.Module:
-    """Build a bottleneck attention module (``attn1``/``attn2``)."""
+def make_bottleneck_attn(mode: AttnMode, channels: int) -> nn.Module:
+    """Build a bottleneck attention module (``attn1``/``attn2``).
+
+    Shape contract: ``[B, channels, H, W] -> [B, channels, H, W]`` for every
+    mode (``"none"`` is the identity; ``"gate"`` output is applied
+    multiplicatively by the caller).
+    """
     if mode == "bam":
         return BAM(channels)
     if mode == "gate":

@@ -6,8 +6,9 @@ Why this exists
 The reviewers' decisive criticism is that the proposed model does not produce
 better-separated clusters than the baseline. The current training optimises only
 pixel-MSE reconstruction; nothing in the objective encourages the latent space to
-be clusterable. Moreover the "latent" used for clustering is the raw 16x8x8=1024
-conv feature map, not the `latent_dim` the config advertises.
+be clusterable. Moreover the "latent" used for clustering is the raw conv feature
+map (16 channels x 16x16 = 4096 dims for 128px tiles), not the `latent_dim` the
+config advertises.
 
 This module supplies the two missing pieces, kept out of the model files so the
 SAME objective applies uniformly to all 7 ablation variants (the Lightning module
@@ -33,6 +34,38 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor
+
+
+def flatten_bottleneck(z: Tensor) -> Tensor:
+    """Flatten a conv bottleneck map ``[N, ...] -> [N, D]`` (row-major)."""
+    return z.reshape(z.size(0), -1)
+
+
+def student_t_assignments(z: Tensor, centers: Tensor, alpha: float = 1.0) -> Tensor:
+    """Student-t (1 dof) soft assignments: ``[N, D]`` x ``[K, D] -> [N, K]``.
+
+    Pure function of its inputs (no module state): ``q_ij =
+    (1 + ||z_i - mu_j||^2 / alpha)^-(alpha+1)/2``, row-normalised.
+    """
+    dist2 = torch.cdist(z, centers) ** 2  # [N, K]
+    q = (1.0 + dist2 / alpha).pow(-(alpha + 1.0) / 2.0)  # [N, K]
+    return q / q.sum(dim=1, keepdim=True).clamp_min(1e-12)  # [N, K]
+
+
+def sharpen_assignments(q: Tensor) -> Tensor:
+    """DEC target distribution: ``[N, K] -> [N, K]``.
+
+    Squares assignments, normalises by cluster frequency ``f_j = sum_i q_ij``
+    (balancing clusters), then renormalises rows. Pure function.
+    """
+    weight = q.pow(2) / q.sum(dim=0, keepdim=True).clamp_min(1e-12)  # [N, K]
+    return weight / weight.sum(dim=1, keepdim=True).clamp_min(1e-12)  # [N, K]
+
+
+def dec_kl_loss(q: Tensor, p: Tensor) -> Tensor:
+    """``KL(P || Q)`` scalar with ``batchmean`` reduction (MSE-comparable scale)."""
+    return F.kl_div(q.clamp_min(1e-12).log(), p, reduction="batchmean")
 
 
 class LatentProjectionHead(nn.Module):
@@ -48,9 +81,14 @@ class LatentProjectionHead(nn.Module):
         self.hidden_dim = hidden_dim
         self._net: nn.Module | None = None
 
-    def _build(self, in_dim: int, device, dtype) -> None:
+    def _build(
+        self,
+        in_dim: int,
+        device: torch.device | str,
+        dtype: torch.dtype,
+    ) -> None:
         if self.hidden_dim:
-            net = nn.Sequential(
+            net: nn.Module = nn.Sequential(
                 nn.Linear(in_dim, self.hidden_dim),
                 nn.ELU(inplace=True),
                 nn.Linear(self.hidden_dim, self.latent_dim),
@@ -59,11 +97,13 @@ class LatentProjectionHead(nn.Module):
             net = nn.Linear(in_dim, self.latent_dim)
         self._net = net.to(device=device, dtype=dtype)
 
-    def forward(self, z: torch.Tensor) -> torch.Tensor:
-        flat = z.reshape(z.size(0), -1)
+    def forward(self, z: Tensor) -> Tensor:
+        # z: [N, ...] conv map -> [N, latent_dim] unit-norm vector.
+        flat = flatten_bottleneck(z)  # [N, D]
         if self._net is None:
             self._build(flat.size(1), flat.device, flat.dtype)
-        latent = self._net(flat)
+        assert self._net is not None
+        latent = self._net(flat)  # [N, latent_dim]
         # L2-normalise: clustering on the unit sphere reflects direction not scale.
         return F.normalize(latent, p=2, dim=1)
 
@@ -94,32 +134,33 @@ class DECClusteringLoss(nn.Module):
         return bool(self._initialised.item())
 
     @torch.no_grad()
-    def init_centers(self, latents: torch.Tensor) -> None:
-        """KMeans-initialise centroids from a batch/pool of latent vectors."""
+    def init_centers(self, latents: Tensor) -> None:
+        """KMeans-initialise centroids from a batch/pool of latent vectors.
+
+        Bounds-crossing op by design (sklearn runs on CPU/numpy); called once
+        after warmup, never in the hot loop.
+        """
         from sklearn.cluster import KMeans
 
-        x = latents.detach().cpu().numpy()
+        x = latents.detach().cpu().numpy()  # [N, D] -> host
         km = KMeans(n_clusters=self.n_clusters, n_init=10, random_state=42)
         km.fit(x)
         centers = torch.as_tensor(km.cluster_centers_, dtype=self.centers.dtype,
-                                  device=self.centers.device)
+                                  device=self.centers.device)  # back to param device/dtype
         self.centers.data.copy_(centers)
         self._initialised.fill_(True)
 
-    def soft_assign(self, z: torch.Tensor) -> torch.Tensor:
-        # ||z_i - mu_j||^2 via cdist; shape (N, K).
-        dist2 = torch.cdist(z, self.centers) ** 2
-        q = (1.0 + dist2 / self.alpha).pow(-(self.alpha + 1.0) / 2.0)
-        q = q / q.sum(dim=1, keepdim=True).clamp_min(1e-12)
-        return q
+    def soft_assign(self, z: Tensor) -> Tensor:
+        """Thin shell over :func:`student_t_assignments` (kept for API stability)."""
+        return student_t_assignments(z, self.centers, self.alpha)
 
     @staticmethod
-    def target_distribution(q: torch.Tensor) -> torch.Tensor:
-        weight = q.pow(2) / q.sum(dim=0, keepdim=True).clamp_min(1e-12)
-        return weight / weight.sum(dim=1, keepdim=True).clamp_min(1e-12)
+    def target_distribution(q: Tensor) -> Tensor:
+        """Thin shell over :func:`sharpen_assignments` (kept for API stability)."""
+        return sharpen_assignments(q)
 
-    def forward(self, z: torch.Tensor) -> torch.Tensor:
-        q = self.soft_assign(z)
-        p = self.target_distribution(q).detach()
-        # KL(P || Q), batchmean to keep scale comparable to MSE.
-        return F.kl_div(q.clamp_min(1e-12).log(), p, reduction="batchmean")
+    def forward(self, z: Tensor) -> Tensor:
+        # z: [N, D] unit-norm latents -> scalar KL(P || Q).
+        q = self.soft_assign(z)  # [N, K]
+        p = self.target_distribution(q).detach()  # [N, K]; targets don't train
+        return dec_kl_loss(q, p)

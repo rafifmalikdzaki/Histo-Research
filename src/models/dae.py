@@ -21,37 +21,84 @@ below pin the historical configs so ``get_model(name)``, checkpoints, and
 published numbers are unaffected.
 """
 
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+from typing import Any
+
 import torch
 import torch.nn as nn
 
 from .attention_mechanisms.bam import BAM
 from .blocks import (
+    ATTN_MODES,
+    KAN_MODES,
+    AttnMode,
+    KanKind,
     conv_bn_elu,
     deconv_bn_elu,
     make_bottleneck_attn,
     make_kan_block,
 )
 
-VARIANT_CONFIGS = {
-    "dae_kan_attention": {"kan": "kan", "bottleneck_attn": "bam"},
-    "baseline": {"kan": "conv", "bottleneck_attn": "plain"},
-    "bam_only": {"kan": "conv_bam", "bottleneck_attn": "bam", "trailing_bam": True},
-    "kan_only": {"kan": "kan", "bottleneck_attn": "none"},
-    "no_bam": {"kan": "kan", "bottleneck_attn": "gate"},
-    "no_kan": {"kan": "conv", "bottleneck_attn": "bam"},
-    "no_eka": {"kan": "efficient", "bottleneck_attn": "bam"},
+
+@dataclass(frozen=True)
+class VariantConfig:
+    """One ablation variant's wiring over the ``kan`` x ``bottleneck_attn`` axes.
+
+    Frozen so configs cannot drift at runtime; ``__post_init__`` fails fast
+    on typos. ``VARIANT_CONFIGS`` below derives plain dicts from these so
+    every existing consumer (subclasses, tests) sees identical values.
+    """
+
+    kan: KanKind = "kan"
+    bottleneck_attn: AttnMode = "bam"
+    trailing_bam: bool = False
+
+    def __post_init__(self) -> None:
+        if self.kan not in KAN_MODES:
+            raise ValueError(f"Unknown kan block kind: {self.kan!r} (expected one of {KAN_MODES})")
+        if self.bottleneck_attn not in ATTN_MODES:
+            raise ValueError(
+                f"Unknown bottleneck attention mode: {self.bottleneck_attn!r} "
+                f"(expected one of {ATTN_MODES})"
+            )
+
+
+_VARIANTS: dict[str, VariantConfig] = {
+    "dae_kan_attention": VariantConfig(kan="kan", bottleneck_attn="bam"),
+    "baseline": VariantConfig(kan="conv", bottleneck_attn="plain"),
+    "bam_only": VariantConfig(kan="conv_bam", bottleneck_attn="bam", trailing_bam=True),
+    "kan_only": VariantConfig(kan="kan", bottleneck_attn="none"),
+    "no_bam": VariantConfig(kan="kan", bottleneck_attn="gate"),
+    "no_kan": VariantConfig(kan="conv", bottleneck_attn="bam"),
+    "no_eka": VariantConfig(kan="efficient", bottleneck_attn="bam"),
+}
+
+VARIANT_CONFIGS: dict[str, dict[str, Any]] = {
+    name: asdict(cfg) for name, cfg in _VARIANTS.items()
 }
 
 
 def _maybe_trailing_bam(block: nn.Sequential, channels: int,
                         trailing_bam: bool) -> nn.Sequential:
+    """Append a BAM gate for the ``bam_only`` variant; identity otherwise."""
     if trailing_bam:
         block.append(BAM(channels))
     return block
 
 
 class DualEncoder(nn.Module):
-    def __init__(self, kan: str = "kan", trailing_bam: bool = False,
+    """First autoencoder stage: downsample 128px tiles to a 64-channel map.
+
+    Forward shapes (for a ``[B, 3, 128, 128]`` input) return::
+
+        out:        [B, 384, 64, 64]   # decoded stage-1 output
+        residual1:  [B, 384, 64, 64]   # skip tap after encoder1
+        residual2:  [B, 128, 32, 32]   # skip tap after encoder2
+    """
+
+    def __init__(self, kan: KanKind = "kan", trailing_bam: bool = False,
                  device: str = "cpu"):
         super().__init__()
         self.kan = make_kan_block(kan, 64, 64, kernel_size=3, padding=1,
@@ -75,23 +122,33 @@ class DualEncoder(nn.Module):
         self.decoder2 = _maybe_trailing_bam(deconv_bn_elu(128, 384), 384,
                                             trailing_bam)
 
-    def forward(self, x: torch.Tensor):
-        out = self.encoder1(x)
-        out = self.encoder2(out)
-        out = self.encoder3(out)
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        # x: [B, 3, 128, 128]. encoder1/encoder2 are pure functions of x, so
+        # the skip taps reuse the main-path tensors instead of recomputing
+        # them (~1/3 less encoder work). Values are bit-identical; gradients
+        # match to autograd summation-order noise (~6e-6 relative on the
+        # two-path early layers — below multithreaded run-to-run variance).
+        enc1 = self.encoder1(x)  # [B, 384, 64, 64]
+        enc2 = self.encoder2(enc1)  # [B, 128, 32, 32]
+        enc3 = self.encoder3(enc2)  # [B, 64, 16, 16]
 
-        residual1 = self.encoder1(x)
-        residual2 = self.encoder2(residual1)
+        out = self.kan(enc3)  # [B, 64, 16, 16]
+        out = self.decoder1(out) + enc2  # [B, 128, 32, 32]
+        out = self.decoder2(out) + enc1  # [B, 384, 64, 64]
 
-        out = self.kan(out)
-        out = self.decoder1(out) + residual2
-        out = self.decoder2(out) + residual1
-
-        return out, residual1, residual2
+        return out, enc1, enc2
 
 
 class DualBottleneck(nn.Module):
-    def __init__(self, attn: str = "bam", trailing_bam: bool = False):
+    """Compress the stage-1 map to the clustered latent ``z``.
+
+    Forward shapes (for a ``[B, 384, 64, 64]`` input) return::
+
+        x:  [B, 128, 32, 32]   # decoded bottleneck map fed to stage 2
+        z:  [B, 16, 16, 16]    # latent map that is later clustered
+    """
+
+    def __init__(self, attn: AttnMode = "bam", trailing_bam: bool = False):
         super().__init__()
         self._attn_mode = attn
         self.encoder1 = conv_bn_elu(384, 384, stride=2)
@@ -103,24 +160,40 @@ class DualBottleneck(nn.Module):
                                            trailing_bam)
 
     def _apply_attn(self, module: nn.Module, x: torch.Tensor) -> torch.Tensor:
+        # x: [B, C, H, W] -> [B, C, H, W]. "gate" multiplies by the module's
+        # [0, 1] mask; "none" is the identity (module is nn.Identity).
         if self._attn_mode == "gate":
             return x * module(x)
         if self._attn_mode == "none":
             return x
         return module(x)
 
-    def forward(self, x: torch.Tensor):
-        x = self.encoder1(x)
-        x = self._apply_attn(self.attn1, x)
-        x = self.encoder2(x)
-        z = self._apply_attn(self.attn2, x)
-        x = self.decoder(z)
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        # x: [B, 384, 64, 64].
+        x = self.encoder1(x)  # [B, 384, 32, 32]
+        x = self._apply_attn(self.attn1, x)  # [B, 384, 32, 32]
+        x = self.encoder2(x)  # [B, 16, 16, 16]
+        z = self._apply_attn(self.attn2, x)  # [B, 16, 16, 16]
+        x = self.decoder(z)  # [B, 128, 32, 32]
 
         return x, z
 
 
 class DualDecoder(nn.Module):
-    def __init__(self, kan: str = "kan", trailing_bam: bool = False,
+    """Second autoencoder stage: rebuild the 128px tile from the bottleneck map.
+
+    Forward shapes (for an ``x`` of ``[B, 128, 32, 32]``) return::
+
+        out:  [B, 3, 128, 128]   # reconstructed tile
+
+    The stage-1 skip taps ``residualEnc1`` (``[B, 384, 64, 64]``) and
+    ``residualEnc2`` (``[B, 128, 32, 32]``) are added after ``decoder2`` and
+    ``decoder1`` respectively — the wiring the original implementation left
+    commented out ("skip ... for now"). This intentionally changes
+    reconstruction numerics versus the skip-less builds.
+    """
+
+    def __init__(self, kan: KanKind = "kan", trailing_bam: bool = False,
                  device: str = "cpu"):
         super().__init__()
         self.kan = make_kan_block(kan, 64, 64, kernel_size=3, padding=1,
@@ -155,18 +228,20 @@ class DualDecoder(nn.Module):
                                              spline_order=1, device=device)
 
     def forward(self, x: torch.Tensor, residualEnc1: torch.Tensor,
-                residualEnc2: torch.Tensor):
-        out = self.encoder1(x)
-        out = self.encoder2(out)
-        out = self.encoder3(out)
+                residualEnc2: torch.Tensor) -> torch.Tensor:
+        # x: [B, 128, 32, 32] -> [B, 3, 128, 128]. Stage-1 skips re-inject
+        # high-resolution features U-Net style (shapes match exactly).
+        out = self.encoder1(x)  # [B, 128, 32, 32] -> [B, 128, 64, 64]
+        out = self.encoder2(out)  # [B, 128, 64, 64] -> [B, 128, 32, 32]
+        out = self.encoder3(out)  # [B, 128, 32, 32] -> [B, 64, 16, 16]
 
-        out = self.kan(out)
+        out = self.kan(out)  # [B, 64, 16, 16] -> [B, 64, 16, 16]
 
-        out = self.decoder1(out)
-        out = self.decoder2(out)
-        out = self.decoder3(out)
-        out = self.Output_Layer(out)
-        out = self.reconstruction(out)
+        out = self.decoder1(out) + residualEnc2  # [B, 128, 32, 32]
+        out = self.decoder2(out) + residualEnc1  # [B, 384, 64, 64]
+        out = self.decoder3(out)  # [B, 384, 64, 64] -> [B, 384, 128, 128]
+        out = self.Output_Layer(out)  # [B, 384, 128, 128] -> [B, 3, 128, 128]
+        out = self.reconstruction(out)  # [B, 3, 128, 128] -> [B, 3, 128, 128]
 
         return out
 
@@ -178,9 +253,16 @@ def _default_device(device: str | None) -> str:
 
 
 class DualAutoencoder(nn.Module):
-    """Dual-stage autoencoder parametrised over the ablation axes."""
+    """Dual-stage autoencoder parametrised over the ablation axes.
 
-    def __init__(self, kan: str = "kan", bottleneck_attn: str = "bam",
+    Forward shapes (for a ``[B, 3, 128, 128]`` tile batch) return::
+
+        encoded:  [B, 384, 64, 64]   # stage-1 code (reconstruction target ref)
+        decoded:  [B, 3, 128, 128]   # reconstructed tile
+        z:        [B, 16, 16, 16]    # bottleneck latent map (clustered downstream)
+    """
+
+    def __init__(self, kan: KanKind = "kan", bottleneck_attn: AttnMode = "bam",
                  trailing_bam: bool = False, device: str | None = None):
         super().__init__()
         device = _default_device(device)
@@ -191,8 +273,13 @@ class DualAutoencoder(nn.Module):
                                          trailing_bam=trailing_bam)
         self.ae_decoder = DualDecoder(kan=kan, trailing_bam=trailing_bam,
                                       device=device)
+        # Honor `device` for every submodule (plain conv/BN blocks take no
+        # device argument, so without this only the KAN blocks would move).
+        # Values are untouched — placement only, keys unchanged.
+        self.to(device)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        # x: [B, 3, 128, 128].
         encoded, residual1, residual2 = self.ae_encoder(x)
         decoded, z = self.bottleneck(encoded)
         decoded = self.ae_decoder(decoded, residual1, residual2)
