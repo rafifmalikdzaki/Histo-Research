@@ -34,7 +34,7 @@ it. Both live in the training package, not here.
 
 ## What it is triggered by
 
-During training, `histodae training` (or `histodae pipeline`) drives it:
+During training, `histodae train` (or `histodae pipeline`) drives it:
 
 - `analysis_hook.run_training_analysis` runs every `--analysis-freq` batches
   during training and for the first few validation batches.
