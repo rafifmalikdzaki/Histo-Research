@@ -22,7 +22,7 @@ The magnification association is a CONFOUND check: we want clusters to track
 treatment_group (high Cramer's V) far more than magnification (low Cramer's V).
 
 Usage:
-    python cluster_biology_analysis.py \
+    histodae biology \
         --embeddings auto_analysis/<run>/embeddings/test_embeddings.npy \
         --metadata   auto_analysis/<run>/embeddings/test_metadata.csv \
         --k 6 --method kmeans --output-dir pathologist_review/<run>
@@ -33,13 +33,11 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-from clustering_metrics import normalize_embeddings, NORMALIZERS  # noqa: E402
+from histodae.clustering.metrics import NORMALIZERS, normalize_embeddings
 
 ASSOC_COLUMNS = ["treatment_group", "diet", "magnification"]
 
@@ -89,7 +87,7 @@ def enrichment_table(labels: np.ndarray, groups: np.ndarray) -> pd.DataFrame:
 
 
 def run_clustering(embeddings: np.ndarray, method: str, k: int) -> np.ndarray:
-    from sklearn.cluster import KMeans, BisectingKMeans
+    from sklearn.cluster import BisectingKMeans, KMeans
     from sklearn.mixture import GaussianMixture
 
     if method == "kmeans":
@@ -163,7 +161,7 @@ def write_scoring_template(out_dir: Path, clusters: np.ndarray) -> None:
     print(f"✓ Scoring template -> {path}")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--embeddings", type=Path, required=True)
     ap.add_argument("--metadata", type=Path, required=True)
@@ -174,7 +172,7 @@ def main() -> int:
     ap.add_argument("--output-dir", type=Path, default=Path("pathologist_review"))
     ap.add_argument("--no-montages", action="store_true")
     ap.add_argument("--n-per-cluster", type=int, default=16)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     emb = np.load(args.embeddings)
     meta = pd.read_csv(args.metadata)

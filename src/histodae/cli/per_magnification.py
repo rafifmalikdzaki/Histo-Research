@@ -2,7 +2,7 @@
 """
 Per-magnification clustering: measure treatment signal with magnification fixed.
 
-The pooled analysis (cluster_biology_analysis.py) found the unsupervised clusters
+The pooled analysis (`histodae biology`) found the unsupervised clusters
 associate with imaging magnification MORE than with treatment arm (Cramér's V_mag >
 V_treat). That makes a pooled "treatment phenotype" claim unsafe — the clusters
 could be separating 10x/20x/40x rather than biology.
@@ -13,7 +13,7 @@ treatment agreement survives within strata, the biological signal is real; if it
 collapses toward 0, the pooled signal was magnification-driven.
 
 Usage:
-    python per_magnification_analysis.py \
+    histodae per-magnification \
         --embeddings <run>/embeddings/test_embeddings.npy \
         --metadata   <run>/embeddings/test_metadata.csv \
         --output results/per_magnification_<tag>.csv
@@ -28,13 +28,16 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-from clustering_metrics import normalize_embeddings, external_metrics, internal_metrics  # noqa: E402
+from histodae.clustering.metrics import (
+    external_metrics,
+    internal_metrics,
+    normalize_embeddings,
+)
 
 
 def run(embeddings_path: Path, metadata_path: Path, output: Path,
         normalize: str, method: str, min_per_stratum: int) -> int:
-    from sklearn.cluster import KMeans, BisectingKMeans
+    from sklearn.cluster import BisectingKMeans, KMeans
 
     emb = np.load(embeddings_path)
     meta = pd.read_csv(metadata_path)
@@ -45,7 +48,6 @@ def run(embeddings_path: Path, metadata_path: Path, output: Path,
     rows = []
     # Pooled reference (k = number of treatment groups overall).
     X_all = normalize_embeddings(emb, normalize)
-    n_treat_all = meta["treatment_group"].nunique()
     for tag, X, sub, k in _iter_strata(X_all, meta, min_per_stratum):
         if k < 2 or len(X) <= k:
             print(f"  skip {tag}: too few treatments/samples")
@@ -102,7 +104,7 @@ def _iter_strata(X_all, meta, min_per_stratum):
         yield f"mag_{mag}", X_all[idx], sub.reset_index(drop=True), k
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--embeddings", type=Path, required=True)
     ap.add_argument("--metadata", type=Path, required=True)
@@ -110,7 +112,7 @@ def main() -> int:
     ap.add_argument("--normalize", default="standardize_l2")
     ap.add_argument("--method", default="kmeans", choices=["kmeans", "bisecting_kmeans"])
     ap.add_argument("--min-per-stratum", type=int, default=100)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     return run(args.embeddings, args.metadata, args.output, args.normalize,
                args.method, args.min_per_stratum)
 

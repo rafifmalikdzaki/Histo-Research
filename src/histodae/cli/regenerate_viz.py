@@ -15,7 +15,7 @@ Everything here is a pure function of the saved (embeddings, metadata); no model
 weights or GPU are needed. Run it once after a `--epoch-viz dump` run.
 
 Usage:
-    python regenerate_epoch_viz.py --run-dir auto_analysis/<run> [--phase val] \
+    histodae regenerate-viz --run-dir auto_analysis/<run> [--phase val] \
         [--k 6] [--tsne]
 """
 
@@ -27,14 +27,18 @@ import os
 import sys
 from pathlib import Path
 
+import matplotlib
 import numpy as np
 import pandas as pd
-import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-from clustering_metrics import normalize_embeddings, internal_metrics, external_metrics  # noqa: E402
+from histodae.clustering.metrics import (
+    external_metrics,
+    internal_metrics,
+    normalize_embeddings,
+)
 
 
 def _epoch_files(emb_dir: Path, phase: str):
@@ -112,11 +116,14 @@ def run(run_dir: Path, phase: str, k: int, normalize: str, use_tsne: bool) -> in
             axes = [axes]
         for ax, m in zip(axes, metrics):
             ax.plot(df["epoch"], df[m], marker="o")
-            ax.set_title(m); ax.set_xlabel("epoch"); ax.grid(alpha=0.3)
+            ax.set_title(m)
+            ax.set_xlabel("epoch")
+            ax.grid(alpha=0.3)
         fig.suptitle(f"Embedding metric evolution ({phase})")
         fig.tight_layout()
         p = out_dir / f"epoch_metric_evolution_{phase}.png"
-        fig.savefig(p, dpi=120); plt.close(fig)
+        fig.savefig(p, dpi=120)
+        plt.close(fig)
         print(f"✓ {p}")
 
     # First/last epoch projection scatter, coloured by treatment group.
@@ -136,14 +143,14 @@ def run(run_dir: Path, phase: str, k: int, normalize: str, use_tsne: bool) -> in
     return 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--run-dir", type=Path, required=True)
     ap.add_argument("--phase", default="val", choices=["train", "val"])
     ap.add_argument("--k", type=int, default=6)
     ap.add_argument("--normalize", default="standardize_l2")
     ap.add_argument("--tsne", action="store_true", help="Use t-SNE instead of PCA (slower).")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     return run(args.run_dir, args.phase, args.k, args.normalize, args.tsne)
 
 

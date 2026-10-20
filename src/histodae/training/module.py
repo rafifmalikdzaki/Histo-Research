@@ -55,7 +55,7 @@ class OptimizedMainModelWithAnalysis(pl.LightningModule,
         #             plots every epoch (original behaviour).
         #   dump   -> save per-epoch .npy + metadata only; skip rendering. The dumps
         #             carry all information; regenerate plots offline with
-        #             regenerate_epoch_viz.py (no GPU). ~40% faster epochs.
+        #             `histodae regenerate-viz` (no GPU). ~40% faster epochs.
         #   off    -> no per-epoch embedding dumps or rendering at all.
         self.epoch_viz = epoch_viz if epoch_viz in ("render", "dump", "off") else "render"
 

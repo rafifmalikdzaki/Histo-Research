@@ -108,7 +108,7 @@ def main(argv: list[str] | None = None):
                        choices=['render', 'dump', 'off'],
                        help="Per-epoch embedding viz: 'render' (save .npy+meta AND plot, "
                             "original), 'dump' (save .npy+meta only, ~40%% faster epochs; "
-                            "rebuild plots offline with regenerate_epoch_viz.py), "
+                            "rebuild plots offline with histodae regenerate-viz), "
                             "'off' (nothing). Default: render.")
 
     # An explicit --config-path turns the YAML into the source of the flag

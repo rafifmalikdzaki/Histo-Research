@@ -31,7 +31,7 @@ class LifecycleMixin:
 
         # Rendering (t-SNE/UMAP, evolution plots) only in 'render' mode. In 'dump'
         # mode the saved .npy + metadata are sufficient to regenerate everything
-        # offline with regenerate_epoch_viz.py.
+        # offline with `histodae regenerate-viz`.
         if self.epoch_viz == "render":
             self._create_embedding_analysis()
             self._create_epoch_evolution_analysis()
@@ -88,7 +88,7 @@ class LifecycleMixin:
 
                 # Render per-epoch visualisations only in 'render' mode; in 'dump'
                 # mode the .npy + metadata above are enough to rebuild them offline
-                # via regenerate_epoch_viz.py (skips the expensive t-SNE/UMAP/PNG work).
+                # via `histodae regenerate-viz` (skips the expensive t-SNE/UMAP/PNG work).
                 if self.epoch_viz == "render" and embeddings_file and metadata_file:
                     self._run_epoch_embedding_analysis(phase, embeddings_file, metadata_file)
 

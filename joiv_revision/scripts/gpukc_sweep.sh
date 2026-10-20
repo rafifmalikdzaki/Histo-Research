@@ -70,8 +70,9 @@ print(f'split ok: train {len(tr)} specimens, test {len(te)} specimens', flush=Tr
 
 run_one() {  # <clone> <gpu> <args...>
   local c="$1" gpu="$2"; shift 2
-  ( cd "$c" && CUDA_VISIBLE_DEVICES="$gpu" WANDB_MODE=offline \
-    python run_corrected_pipeline.py "$@" --dataset hepar --k 6 \
+  ( cd "$c" && export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}" \
+    CUDA_VISIBLE_DEVICES="$gpu" WANDB_MODE=offline \
+    python -m histodae.cli.pipeline "$@" --dataset hepar --k 6 \
       --epoch-viz dump --analysis-freq 200 >>"$LOG" 2>&1 )
 }
 

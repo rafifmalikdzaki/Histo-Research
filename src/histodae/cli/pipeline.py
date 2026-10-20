@@ -219,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="Run in-training auto-analysis every N batches (higher = faster).")
     ap.add_argument("--epoch-viz", default="dump", choices=["render", "dump", "off"],
                     help="Per-epoch embedding viz mode (default dump: save data, skip "
-                         "rendering for ~40%% faster epochs; rebuild with regenerate_epoch_viz.py).")
+                         "rendering for ~40%% faster epochs; rebuild with `histodae regenerate-viz`).")
     ap.add_argument("--skip-train", action="store_true",
                     help="Only run the aggregate eval over existing auto_analysis runs.")
     ap.add_argument("--offline-wandb", action="store_true", default=True,

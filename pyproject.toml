@@ -76,6 +76,11 @@ histodae-tables = "histodae.cli.tables:main"
 histodae-evaluate = "histodae.cli.evaluate:main"
 histodae-make-hepar-csv = "histodae.cli.make_hepar_csv:main"
 histodae-make-pannuke-csv = "histodae.cli.make_pannuke_csv:main"
+histodae-per-magnification = "histodae.cli.per_magnification:main"
+histodae-biology = "histodae.cli.biology:main"
+histodae-interpretability = "histodae.cli.interpretability:main"
+histodae-profile = "histodae.cli.profile:main"
+histodae-regenerate-viz = "histodae.cli.regenerate_viz:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

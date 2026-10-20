@@ -37,6 +37,15 @@ _COMMANDS: tuple[tuple[str, str, str], ...] = (
     ("plots", "plots", "Generate clustering metric plots."),
     ("tables", "tables", "Generate LaTeX tables from clustering results."),
     ("evaluate", "evaluate", "Evaluate multi-seed experiment statistics."),
+    ("per-magnification", "per_magnification",
+     "Measure treatment signal with magnification held fixed (confound control)."),
+    ("biology", "biology",
+     "Cluster/biology association (Cramer's V, enrichment) + pathologist review materials."),
+    ("interpretability", "interpretability",
+     "Compute interpretability metrics for a trained checkpoint."),
+    ("profile", "profile", "Profile runtime and memory for the model variants."),
+    ("regenerate-viz", "regenerate_viz",
+     "Rebuild per-epoch embedding visualisations offline from saved dumps."),
 )
 
 _PASS_THROUGH = {
