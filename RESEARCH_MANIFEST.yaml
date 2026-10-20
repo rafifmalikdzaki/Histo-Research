@@ -15,6 +15,11 @@ hub:
   dataset_repo: pytholove/hepar-pannuke-joiv-rev   # private, type dataset
   model_repo: pytholove/dae-kan-attn-joiv-rev      # private, type model
   visibility: private (never make public without ethics confirmation)
+  code_bundle:
+    path: code/histodae_code.bundle                 # in the model repo
+    commit: 2e6e766e                                # rebuilt 2026-10-20 (was 8d0612a9, 31 behind)
+    published: 2026-10-20                           # HF commit 85799cf4e0aeefcab40bd9acafb4977dad2ceb0d
+    note: "gpukc_sweep.sh now rolls an existing clone onto this bundle, so publishing a new one is enough to roll the sweep forward" 
 compute:
   host: gpu-kc (labkc-comm1, 2x RTX 3060 12GB)
   project_dir: /mnt/home/dzakirm/histodae_joiv
