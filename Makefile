@@ -26,7 +26,7 @@ help:
 check: lint typecheck test
 
 lint:
-	$(RUFF) check src tests scripts *.py
+	$(RUFF) check src tests scripts joiv_revision/scripts *.py
 
 typecheck:
 	$(MYPY)

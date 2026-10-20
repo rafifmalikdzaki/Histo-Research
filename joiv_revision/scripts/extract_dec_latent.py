@@ -16,7 +16,13 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _bootstrap import ensure_package_on_path  # noqa: E402
+
+ensure_package_on_path()
+from sklearn.cluster import KMeans  # noqa: E402
+from sklearn.mixture import GaussianMixture  # noqa: E402
+
 from histodae.cli.extract import TileDataset, _load_state_dict  # noqa: E402
 from histodae.clustering.dec import LatentProjectionHead  # noqa: E402
 from histodae.clustering.metrics import (  # noqa: E402
@@ -26,8 +32,6 @@ from histodae.clustering.metrics import (  # noqa: E402
 )
 from histodae.data.datasets import load_metadata  # noqa: E402
 from histodae.models.factory import get_model  # noqa: E402
-from sklearn.cluster import KMeans, BisectingKMeans  # noqa: E402
-from sklearn.mixture import GaussianMixture  # noqa: E402
 
 RUNS = sys.argv[1:]  # run dirs with checkpoints/last.ckpt
 device = "cuda"
@@ -72,6 +76,7 @@ for run in RUNS:
                    **external_metrics(df["treatment_group"].values, labels, prefix="treatment_"),
                    **external_metrics(df["diet"].values, labels, prefix="diet_")}
             out_rows.append(row)
-            print(tag, name, "sil=%.3f dbi=%.2f tAMI=%.3f" % (row["silhouette"], row["davies_bouldin"], row["treatment_ami"]))
+            print(tag, name, f"sil={row['silhouette']:.3f} dbi={row['davies_bouldin']:.2f} "
+                            f"tAMI={row['treatment_ami']:.3f}")
 pd.DataFrame(out_rows).to_csv("/tmp/dec_latent_metrics.csv", index=False)
 print("DONE -> /tmp/dec_latent_metrics.csv")

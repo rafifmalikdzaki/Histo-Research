@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Frozen ImageNet ResNet50 encoder + clustering baseline (A6 minimum).
 No training: forward-pass features on held-out test tiles, standardize+L2,
-KMeans/Bisecting/GMM k=6, internal + external metrics via src/clustering_metrics.
+KMeans/Bisecting/GMM k=6, internal + external metrics via histodae.clustering.metrics.
 """
 import sys
 from pathlib import Path
@@ -12,14 +12,18 @@ import torch
 import torchvision
 from PIL import Image
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _bootstrap import ensure_package_on_path  # noqa: E402
+
+ensure_package_on_path()
+from sklearn.cluster import BisectingKMeans, KMeans  # noqa: E402
+from sklearn.mixture import GaussianMixture  # noqa: E402
+
 from histodae.clustering.metrics import (  # noqa: E402
     external_metrics,
     internal_metrics,
     normalize_embeddings,
 )
-from sklearn.cluster import KMeans, BisectingKMeans  # noqa: E402
-from sklearn.mixture import GaussianMixture  # noqa: E402
 
 PROJ = Path("/mnt/home/dzakirm/histodae_joiv")
 meta = pd.read_csv(PROJ / "hub_data/test_hepar.csv")
