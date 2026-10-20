@@ -13,6 +13,11 @@
 
 set -e  # Exit on error
 
+# `python -m histodae.cli.*` needs the package importable. Prefer this
+# checkout's src/ over any installed copy.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$REPO_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
+
 # Default parameters
 BASE_DIR="auto_analysis"
 K=6
@@ -95,7 +100,7 @@ if [ ! -z "$PRESERVE_FROM" ]; then
     PRESERVE_CMD="--preserve-from $PRESERVE_FROM"
 fi
 
-python src/run_clustering_analysis.py \
+python -m histodae.cli.cluster \
     --base-dir "$BASE_DIR" \
     --k $K \
     --methods $METHODS \
@@ -114,7 +119,7 @@ echo ""
 echo "===================================================================================================="
 echo "🧪 STEP 2: Computing Statistical Significance"
 echo "===================================================================================================="
-python src/compute_statistical_significance.py \
+python -m histodae.cli.stats \
     --input "$OUTPUT_DIR/raw_clustering_metrics.csv" \
     --baseline baseline \
     --output "$OUTPUT_DIR/clustering_summary.csv" \
@@ -132,7 +137,7 @@ echo ""
 echo "===================================================================================================="
 echo "📈 STEP 3: Generating Visualization Plots"
 echo "===================================================================================================="
-python src/generate_clustering_plots.py \
+python -m histodae.cli.plots \
     --input "$OUTPUT_DIR/clustering_summary.csv" \
     --tests "$OUTPUT_DIR/statistical_tests.csv" \
     --output-dir "$FIGURES_DIR"
@@ -148,7 +153,7 @@ echo ""
 echo "===================================================================================================="
 echo "📝 STEP 4: Generating LaTeX Tables"
 echo "===================================================================================================="
-python src/generate_latex_tables.py \
+python -m histodae.cli.tables \
     --summary "$OUTPUT_DIR/clustering_summary.csv" \
     --tests "$OUTPUT_DIR/statistical_tests.csv" \
     --output-dir "$TABLES_DIR"

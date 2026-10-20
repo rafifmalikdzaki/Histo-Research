@@ -121,6 +121,8 @@ class DECClusteringLoss(nn.Module):
     with `init_centers` before the loss contributes.
     """
 
+    _initialised: torch.Tensor
+
     def __init__(self, n_clusters: int, latent_dim: int, alpha: float = 1.0):
         super().__init__()
         self.n_clusters = n_clusters
@@ -147,7 +149,8 @@ class DECClusteringLoss(nn.Module):
         km.fit(x)
         centers = torch.as_tensor(km.cluster_centers_, dtype=self.centers.dtype,
                                   device=self.centers.device)  # back to param device/dtype
-        self.centers.data.copy_(centers)
+        with torch.no_grad():
+            self.centers.copy_(centers)
         self._initialised.fill_(True)
 
     def soft_assign(self, z: Tensor) -> Tensor:

@@ -34,30 +34,43 @@ This repository contains the official PyTorch implementation of our attention-en
 ```
 histodae/
 ├── src/
-│   ├── models/
-│   │   ├── dae.py                      # Unified dual-autoencoder + 7 variant configs
-│   │   ├── blocks.py                   # Shared KAN/attention building blocks
-│   │   ├── factory.py                  # Model factory for different variants
-│   │   ├── attention_mechanisms/
-│   │   │   ├── bam.py                  # Bottleneck Attention Module
-│   │   │   ├── eca.py                  # Efficient Channel Attention
-│   │   │   └── cbam.py                 # Convolutional Block Attention Module
-│   │   └── kan_convolutional/
-│   │       ├── efficient_kan.py        # KAN linear layer implementation
-│   │       └── efficient_kan_conv_fixed.py  # KAN convolutional layer
-│   │
-│   ├── analysis/
-│   │   └── auto_analysis.py            # Automatic analysis during training
-│   │
-│   ├── utils/
-│   │   ├── __init__.py                 # Utilities package
-│   │   └── reproducibility.py          # Seed setting, config management
-│   │
-│   ├── histodata.py                    # Dataset loading utilities
-│   └── pl_training_with_analysis_and_optimization.py  # Main training script
-│
-├── config/
-│   └── experiment_config.yaml          # Centralized hyperparameter configuration
+│   └── histodae/                       # the one installed package
+│       ├── data/                       # dataset resolution, splits, metadata
+│       │   ├── datasets.py             # ImageDataset, create_dataset, load_metadata
+│       │   └── metadata.py             # Hepar filename taxonomy parsing
+│       ├── clustering/                 # metrics + DEC/IDEC objective
+│       │   ├── metrics.py              # robust internal/external metrics, normalization
+│       │   └── dec.py                  # LatentProjectionHead, DECClusteringLoss
+│       ├── models/                     # the dual autoencoder family
+│       │   ├── dae.py                  # Unified dual-autoencoder + 7 variant configs
+│       │   ├── blocks.py               # Shared KAN/attention building blocks
+│       │   ├── factory.py              # Model factory for different variants
+│       │   ├── attention_mechanisms/   # bam.py (+ eca.py, cbam.py when added)
+│       │   └── kan_convolutional/      # efficient_kan.py, efficient_kan_conv_fixed.py
+│       ├── training/                   # Lightning module and its collaborators
+│       │   ├── module.py               # the LightningModule (forward, train/val steps)
+│       │   ├── losses.py               # objective computation
+│       │   ├── optim.py                # optimizer + head-registration safety net
+│       │   ├── analysis_hook.py        # periodic in-training analysis
+│       │   ├── config.py               # experiment YAML -> CLI defaults
+│       │   ├── embedding_io.py         # embedding collection and dumping
+│       │   ├── lifecycle.py            # epoch / end-of-training hooks
+│       │   ├── reports.py              # report and figure generation
+│       │   └── hparams.py              # ablation config, batch-size probe
+│       ├── analysis/                   # in-training analysis
+│       │   ├── auto_analysis.py        # AutomaticAnalyzer (assembles the mixins)
+│       │   ├── attention.py            # attention hooks + attention metrics
+│       │   ├── batch.py                # per-batch metrics and summaries
+│       │   ├── wandb_logging.py        # exception-safe W&B logging
+│       │   ├── locking.py              # cross-process lock on the output dir
+│       │   ├── comparison.py           # cross-run ablation comparison figures
+│       │   ├── embedding_cluster.py    # embedding clustering analysis
+│       │   └── viz*.py                 # visualisations and dashboards
+│       ├── stats/                      # effect sizes, seed pairing, result tables
+│       ├── io/                         # run-artifact IO (configs, run discovery)
+│       ├── utils/                      # seeding, experiment dirs, W&B integration
+│       ├── config/                     # packaged YAML defaults
+│       └── cli/                        # one module per pipeline stage
 │
 ├── tests/                              # pytest suite (python -m pytest tests/)
 │
@@ -75,15 +88,13 @@ histodae/
 ├── results/                            # Aggregated results
 │   └── summary_stats.csv               # Multi-seed summary table
 │
-├── run_multi_seed_experiments.py       # Multi-seed experiment runner
-├── evaluate_stats.py                   # Statistical significance analysis
-├── sensitivity_analysis.py             # Hyperparameter sensitivity (Task 4)
-├── cross_domain_eval.py                # Cross-domain transfer evaluation (Task 5)
-├── profile_runtime.py                  # Runtime & memory profiling (Task 6)
-├── extract_tile_embeddings.py          # Embedding extraction for clustering
-├── run_ablation_study.py               # Ablation study runner
-└── ablation_study_comparison.py        # Ablation study comparison
+└── run_corrected_pipeline.py           # Thin shims for the CLI stages (prefer the
+                                        # `histodae` console script)
 ```
+
+Every module is importable as `histodae.<layer>.<module>` — that is the only
+supported import path. The flat names (`histodata`, `models.factory`, ...)
+still work as thin aliases that resolve to the *same* module objects.
 
 ---
 
@@ -129,10 +140,10 @@ Create CSV files using the provided scripts:
 
 ```bash
 # For PanNuke
-python create_pannuke_csv.py --data-dir data/processed/PANnuke
+histodae data pannuke --data-path data/processed/PANnuke
 
 # For IMI/Hepar
-python create_hepar_csv.py --data-dir data/processed/HeparUnifiedPNG
+histodae data hepar --data-path data/processed/HeparUnifiedPNG
 ```
 
 ### 3. Train the Model
@@ -140,7 +151,7 @@ python create_hepar_csv.py --data-dir data/processed/HeparUnifiedPNG
 **Single run (default seed = 42):**
 
 ```bash
-python src/pl_training_with_analysis_and_optimization.py \
+histodae train \
     --model-name dae_kan_attention \
     --dataset hepar \
     --max-epochs 30 \
@@ -148,16 +159,20 @@ python src/pl_training_with_analysis_and_optimization.py \
     --seed 42
 ```
 
-**Multi-seed evaluation (for statistical significance):**
+**Corrected end-to-end sweep** (train → extract embeddings + metadata →
+cluster → Holm-corrected statistics), which is the maintained orchestrator:
 
 ```bash
-# Run with 5 seeds (42, 123, 456, 789, 1011)
-python run_multi_seed_experiments.py \
-    --model-name dae_kan_attention \
-    --dataset HeparUnifiedPNG \
+histodae pipeline \
+    --models dae_kan_attention baseline bam_only kan_only no_bam no_kan no_eka \
+    --seeds 42 123 456 789 1011 \
     --epochs 30 \
-    --batch-size 8
+    --dataset hepar \
+    --k 6
 ```
+
+Add `--config-path config/experiment.yaml` to seed the hyperparameters from
+the packaged experiment config (explicit CLI flags still win).
 
 ### 4. Evaluate Results
 
@@ -165,81 +180,71 @@ python run_multi_seed_experiments.py \
 
 ```bash
 # Aggregate multi-seed results
-python evaluate_stats.py \
+histodae evaluate \
     --model dae_kan_attention \
     --dataset HeparUnifiedPNG \
     --run-tests \
     --output results/summary_stats.csv
 ```
 
+**Clustering metrics over extracted embeddings:**
+
+```bash
+histodae cluster --base-dir auto_analysis --k 6 --normalize standardize_l2 \
+    --output results/raw_clustering_metrics.csv
+```
+
+**Figures and LaTeX tables:**
+
+```bash
+histodae plots  --input results/clustering_summary.csv \
+    --tests results/statistical_tests.csv --output-dir figures
+histodae tables --summary results/clustering_summary.csv \
+    --tests results/statistical_tests.csv --output-dir tables
+```
+
 ---
 
 ## 📊 Reproducing All Experiments
 
-### Main Results (Table X in paper)
+All experiments are driven by the corrected pipeline
+(`histodae pipeline`), which trains, extracts test-split embeddings with
+their biology metadata, clusters them, and runs the paired, Holm-corrected
+statistics. The older per-experiment orchestrators
+(`run_multi_seed_experiments.py`, `run_ablation_study.py`,
+`sensitivity_analysis.py`, `cross_domain_eval.py`, `profile_runtime.py`)
+were removed: they passed flags the training script no longer accepts and
+had no metadata-extraction step, which is why their results were not
+reproducible.
+
+### Main results + ablation study
 
 ```bash
-# Proposed method (DAE-KAN-Attention) - 5 seeds
-python run_multi_seed_experiments.py --model-name dae_kan_attention --epochs 30
-
-# Baseline variants
-python run_multi_seed_experiments.py --model-name baseline --epochs 30
-python run_multi_seed_experiments.py --model-name bam_only --epochs 30
-python run_multi_seed_experiments.py --model-name kan_only --epochs 30
-python run_multi_seed_experiments.py --model-name no_bam --epochs 30
-python run_multi_seed_experiments.py --model-name no_kan --epochs 30
+# 7 variants x 5 seeds x 30 epochs, one command
+histodae pipeline \
+    --models dae_kan_attention baseline bam_only kan_only no_bam no_kan no_eka \
+    --seeds 42 123 456 789 1011 \
+    --epochs 30 --dataset hepar --k 6
 ```
 
-### Ablation Study (Table Y in paper)
+Ablation variants are configs of one implementation
+(`src/histodae/models/dae.py`), so an ablation sweep differs from the main
+run only in the `--models` list.
+
+### Objective ablation (reconstruction vs clustering objective)
 
 ```bash
-# Run ablation study with variance reporting
-python run_ablation_study.py \
-    --mode different-architecture \
-    --models dae_kan_attention baseline bam_only kan_only no_bam no_kan \
-    --max-epochs 30
-
-# Compare ablation results
-python ablation_study_comparison.py --base_dir auto_analysis --all_runs
+# clustering objective ON (DEC/IDEC); default is pure reconstruction
+histodae pipeline --models dae_kan_attention --seeds 42 123 456 \
+    --epochs 30 --cluster-weight 0.5 --latent-dim 128 --n-clusters 5 \
+    --cluster-warmup-epochs 5
 ```
 
-### Hyperparameter Sensitivity Analysis
+### Full analysis pipeline over existing runs
 
 ```bash
-python sensitivity_analysis.py \
-    --latent-dims 32 64 128 256 \
-    --n-clusters 3 4 5 6 7 \
-    --kan-spline-orders 3 5 7 \
-    --eca-kernel-sizes 3 5 7 \
-    --output-dir outputs/sensitivity
+bash run_analysis_pipeline.sh --base-dir auto_analysis --k 6
 ```
-
-### Cross-Domain Transfer Learning
-
-```bash
-python cross_domain_eval.py \
-    --source PanNuke \
-    --target HeparUnifiedPNG \
-    --strategy zero_shot
-
-# With fine-tuning
-python cross_domain_eval.py \
-    --source PanNuke \
-    --target HeparUnifiedPNG \
-    --strategy finetune \
-    --finetune-epochs 10
-```
-
-### Runtime & Memory Profiling
-
-```bash
-python profile_runtime.py \
-    --model-name dae_kan_attention \
-    --batch-sizes 4 8 16 \
-    --output outputs/profiling/runtime_report.csv
-```
-
----
 
 ## 🧪 Model Variants
 
@@ -286,7 +291,7 @@ outputs/
 
 ## 🔬 Key Hyperparameters
 
-Default hyperparameters (from `config/experiment_config.yaml`):
+Default hyperparameters (from `src/histodae/config/experiment.yaml`):
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from typing import cast
 
 import torch
 import torch.nn.functional as F
@@ -13,6 +14,10 @@ class KANLinear(torch.nn.Module):
     Forward maps ``[..., in_features] -> [..., out_features]`` as
     ``base_activation(x) @ base_weight + spline(x) @ spline_weight``.
     """
+
+    grid: torch.Tensor
+    base_weight: torch.Tensor
+    spline_weight: torch.Tensor
 
     def __init__(
         self,
@@ -78,13 +83,14 @@ class KANLinear(torch.nn.Module):
                 * self.scale_noise
                 / self.grid_size
             )
-            self.spline_weight.data.copy_(
-                (self.scale_spline if not self.enable_standalone_scale_spline else 1.0)
-                * self.curve2coeff(
-                    self.grid.T[self.spline_order : -self.spline_order],
-                    noise,
+            with torch.no_grad():
+                self.spline_weight.copy_(
+                    (self.scale_spline if not self.enable_standalone_scale_spline else 1.0)
+                    * self.curve2coeff(
+                        self.grid.T[self.spline_order : -self.spline_order],
+                        noise,
+                    )
                 )
-            )
             if self.enable_standalone_scale_spline:
                 # torch.nn.init.constant_(self.spline_scaler, self.scale_spline)
                 torch.nn.init.kaiming_uniform_(self.spline_scaler, a=math.sqrt(5) * self.scale_spline)
@@ -209,8 +215,9 @@ class KANLinear(torch.nn.Module):
             dim=0,
         )
 
-        self.grid.copy_(grid.T)
-        self.spline_weight.data.copy_(self.curve2coeff(x, unreduced_spline_output))
+        with torch.no_grad():
+            self.grid.copy_(grid.T)
+            self.spline_weight.copy_(self.curve2coeff(x, unreduced_spline_output))
 
     def regularization_loss(
         self,
@@ -237,6 +244,8 @@ class KANLinear(torch.nn.Module):
 class KAN(torch.nn.Module):
     """Stack of KANLinear layers over a hidden-dims list (unused by the conv
     family, which uses :class:`KANLinear` directly; kept for API stability)."""
+
+    layers: torch.nn.ModuleList
 
     def __init__(
         self,
@@ -275,9 +284,10 @@ class KAN(torch.nn.Module):
 
     def forward(self, x: torch.Tensor, update_grid: bool = False) -> torch.Tensor:
         for layer in self.layers:
+            kan_layer = cast("KANLinear", layer)
             if update_grid:
-                layer.update_grid(x)
-            x = layer(x)
+                kan_layer.update_grid(x)
+            x = kan_layer(x)
         return x
 
     def regularization_loss(
@@ -285,7 +295,11 @@ class KAN(torch.nn.Module):
         regularize_activation: float = 1.0,
         regularize_entropy: float = 1.0,
     ) -> torch.Tensor:
-        return sum(
-            layer.regularization_loss(regularize_activation, regularize_entropy)
-            for layer in self.layers
-        )
+        first = cast("KANLinear", self.layers[0])
+        total = torch.zeros((), device=first.base_weight.device)
+        for layer in self.layers:
+            kan_layer = cast("KANLinear", layer)
+            total = total + kan_layer.regularization_loss(
+                regularize_activation, regularize_entropy
+            )
+        return total

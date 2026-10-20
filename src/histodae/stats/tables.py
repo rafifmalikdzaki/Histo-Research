@@ -362,8 +362,8 @@ def generate_statistical_tests_table(tests_df: pd.DataFrame) -> str:
 
 def save_latex_table(summary_df: pd.DataFrame, tests_df: pd.DataFrame, output_path: str):
     """Save LaTeX table for paper."""
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path = Path(output_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     lines = []
     lines.append("% Clustering Metrics Summary Table")
@@ -394,8 +394,8 @@ def save_latex_table(summary_df: pd.DataFrame, tests_df: pd.DataFrame, output_pa
     lines.append("\\end{tabular}")
     lines.append("\\end{table}")
 
-    with open(output_path, 'w') as f:
+    with open(out_path, 'w') as f:
         f.write("\n".join(lines))
 
-    print(f"✓ LaTeX table saved to: {output_path}")
+    print(f"✓ LaTeX table saved to: {out_path}")
 

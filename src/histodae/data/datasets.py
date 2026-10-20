@@ -32,7 +32,7 @@ def _resolve_image_base(image_path: Path, dataset_name: str, image_dirs) -> Path
     return image_path / dataset_name
 
 
-def load_metadata(subset: str, image_path: str = None,
+def load_metadata(subset: str, image_path: str | None = None,
                   dataset_name: str = "HeparUnifiedPNG") -> pd.DataFrame:
     """Load the split CSV and return a DataFrame with a resolved absolute `path`
     column plus all biology metadata columns (treatment_group, diet,
@@ -40,15 +40,15 @@ def load_metadata(subset: str, image_path: str = None,
 
     Training is unsupervised; these labels are used only for evaluation.
     """
-    image_path = Path(image_path) if image_path is not None else Path("./data/processed")
+    root = Path(image_path) if image_path is not None else Path("./data/processed")
     spec = _dataset_spec(dataset_name)
-    csv_path = image_path / f"{subset}_{spec['csv_stem']}.csv"
+    csv_path = root / f"{subset}_{spec['csv_stem']}.csv"
     if not csv_path.exists():
         raise FileNotFoundError(
             f"CSV for dataset '{dataset_name}' subset '{subset}' not found at {csv_path}")
 
     df = pd.read_csv(csv_path)
-    base = _resolve_image_base(image_path, dataset_name, spec["image_dirs"])
+    base = _resolve_image_base(root, dataset_name, spec["image_dirs"])
 
     # `Image` may be a bare filename (new format) or carry a legacy train/ or
     # test/ prefix; strip any directory component and resolve against `base`.
@@ -60,7 +60,7 @@ def load_metadata(subset: str, image_path: str = None,
     return df
 
 
-def create_dataset(subset: str, image_path: str = None,
+def create_dataset(subset: str, image_path: str | None = None,
                    dataset_name: str = "HeparUnifiedPNG"):
     """Backward-compatible loader returning (image_paths, labels).
 

@@ -1,8 +1,20 @@
 #!/usr/bin/env python3
-"""Thin shim — implementation lives in src/; prefer the `histodae-*` console script."""
-import runpy
+"""Thin shim — implementation lives in ``histodae.cli.pipeline``; prefer the
+``histodae-pipeline`` console script or the unified ``histodae`` CLI.
+
+The ``sys.path`` insert below is deliberate: it puts this checkout's
+``src/`` ahead of any installed copy of ``histodae``, so a clone always runs
+its own code (the remote JOIV sweep relies on this).
+"""
+
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
-runpy.run_module("run_corrected_pipeline", run_name="__main__")
+_SRC = str(Path(__file__).resolve().parent / "src")
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
+
+from histodae.cli.pipeline import main  # noqa: E402
+
+if __name__ == "__main__":
+    raise SystemExit(main() or 0)

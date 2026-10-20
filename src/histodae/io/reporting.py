@@ -17,13 +17,13 @@ __all__ = ["load_data", "load_raw_metrics"]
 
 def load_raw_metrics(input_path: str) -> pd.DataFrame:
     """Load a raw per-run clustering-metrics CSV, exiting when missing."""
-    input_path = Path(input_path)
-    if not input_path.exists():
-        print(f"❌ Input file not found: {input_path}")
+    path = Path(input_path)
+    if not path.exists():
+        print(f"❌ Input file not found: {path}")
         sys.exit(1)
 
-    df = pd.read_csv(input_path)
-    print(f"✓ Loaded {len(df)} results from {input_path}")
+    df = pd.read_csv(path)
+    print(f"✓ Loaded {len(df)} results from {path}")
     return df
 
 

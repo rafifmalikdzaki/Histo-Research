@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from histodae.io.run_config import load_config, load_json, save_config, save_json
+from histodae.utils.provenance import write_run_manifest
 from histodae.utils.seeding import get_experiment_timestamp
 
 __all__ = [
@@ -169,7 +170,28 @@ def create_experiment_config(
     config_json_path = exp_dir / 'configs' / 'experiment.json'
     save_json(config, config_json_path)
 
+    # Self-describing provenance: commit, seed, model, dataset, split hashes.
+    write_run_manifest(
+        exp_dir,
+        seed=config.get('seed'),
+        model_name=config.get('model_name'),
+        dataset=config.get('dataset'),
+        hyperparameters=config,
+        split_csvs=_split_csvs_for(config),
+    )
+
     return exp_dir, config
+
+
+def _split_csvs_for(config: dict[str, Any]) -> list[Path]:
+    """Best-effort location of the split CSVs a run was trained on."""
+    dataset = config.get('dataset')
+    csv_stem = {'hepar': 'hepar', 'HeparUnifiedPNG': 'hepar',
+                'pannuke': 'pannuke', 'PANnuke': 'pannuke'}.get(str(dataset))
+    if csv_stem is None:
+        return []
+    root = Path(config.get('data_dir') or 'data/processed')
+    return [root / f'{subset}_{csv_stem}.csv' for subset in ('train', 'test')]
 
 
 def get_experiment_config_from_dir(exp_dir: Path) -> dict[str, Any]:

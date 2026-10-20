@@ -20,6 +20,8 @@ This module provides:
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from sklearn.metrics import (
     adjusted_mutual_info_score,
@@ -67,13 +69,13 @@ def xie_beni(embeddings: np.ndarray, labels: np.ndarray) -> float:
     """
     embeddings = np.asarray(embeddings, dtype=np.float64)
     uniq = np.unique(labels)
-    centers = []
+    center_list = []
     for u in uniq:
         pts = embeddings[labels == u]
         if len(pts) == 0:
             continue
-        centers.append(pts.mean(axis=0))
-    centers = np.asarray(centers)
+        center_list.append(pts.mean(axis=0))
+    centers = np.asarray(center_list)
     if len(centers) < 2:
         return float("nan")
 
@@ -100,7 +102,7 @@ def internal_metrics(embeddings: np.ndarray, labels: np.ndarray) -> dict:
     than a misleading 0."""
     labels = np.asarray(labels)
     n_clusters = len(np.unique(labels))
-    out = {"n_effective_clusters": int(n_clusters)}
+    out: dict[str, Any] = {"n_effective_clusters": int(n_clusters)}
 
     if n_clusters < 2 or n_clusters >= len(embeddings):
         return {**out, "silhouette": np.nan, "davies_bouldin": np.nan,

@@ -113,7 +113,7 @@ def parse_hepar_filename(name: str) -> HeparMeta:
 
     # Resolve canonical spec via longest-matching key (case-insensitive).
     spec = None
-    matched_key = None
+    matched_key = ""
     for key in sorted(CANONICAL_GROUPS, key=len, reverse=True):
         if raw_code.upper() == key.upper():
             spec, matched_key = CANONICAL_GROUPS[key], key

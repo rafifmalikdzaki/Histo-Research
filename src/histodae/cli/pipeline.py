@@ -49,6 +49,31 @@ PYTHON = sys.executable  # use the same interpreter (the venv) for children
 DATASET_FULL = {"hepar": "HeparUnifiedPNG", "pannuke": "PANnuke"}
 
 
+def _source_root() -> Path | None:
+    """The checkout's ``src`` directory, when running from a source tree.
+
+    ``None`` when histodae is used as an installed package (no source tree to
+    prefer over the installed copy).
+    """
+    candidate = Path(__file__).resolve().parents[3] / "src"
+    return candidate if (candidate / "histodae").is_dir() else None
+
+
+def _child_env(env: dict | None = None) -> dict:
+    """Environment for child processes, with clone-local code taking priority.
+
+    A clone (e.g. the remote JOIV sweep) must run *its own* code even when a
+    different copy of ``histodae`` is installed in the shared virtualenv.
+    Prepending this checkout's ``src`` to ``PYTHONPATH`` guarantees that.
+    """
+    child = dict(env if env is not None else os.environ)
+    src = _source_root()
+    if src is not None:
+        existing = child.get("PYTHONPATH")
+        child["PYTHONPATH"] = f"{src}{os.pathsep}{existing}" if existing else str(src)
+    return child
+
+
 def _full_dataset(name: str) -> str:
     return DATASET_FULL.get(name.lower(), name)
 
@@ -57,7 +82,7 @@ def _run(cmd: list[str], log: Path, env: dict | None = None) -> int:
     log.parent.mkdir(parents=True, exist_ok=True)
     print(f"$ {' '.join(cmd)}")
     with open(log, "w") as f:
-        proc = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, env=env)
+        proc = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, env=_child_env(env))
     return proc.returncode
 
 
@@ -118,7 +143,7 @@ def train_one(model: str, seed: int, epochs: int, batch_size: int, dataset: str,
               analysis_freq: int = 200, epoch_viz: str = "dump") -> Path | None:
     before = _snapshot_runs()
     cmd = [
-        PYTHON, "src/pl_training_with_analysis_and_optimization.py",
+        PYTHON, "-m", "histodae.cli.train",
         "--model-name", model, "--dataset", dataset, "--seed", str(seed),
         "--max-epochs", str(epochs), "--batch-size", str(batch_size),
         "--analysis-freq", str(analysis_freq), "--epoch-viz", epoch_viz,
@@ -148,7 +173,7 @@ def extract_one(model: str, run_dir: Path, dataset: str, batch_size: int,
         print(f"⚠️  no checkpoint in {run_dir}; skipping extraction")
         return False
     cmd = [
-        PYTHON, "src/extract_embeddings_for_clustering.py",
+        PYTHON, "-m", "histodae.cli.extract",
         "--model-name", model, "--dataset", _full_dataset(dataset), "--phase", "test",
         "--checkpoint", str(ckpt), "--output-dir", str(run_dir),
         "--batch-size", str(batch_size),
@@ -162,14 +187,14 @@ def aggregate(base_dir: Path, k: int, logs_dir: Path, env: dict) -> None:
     results.mkdir(exist_ok=True)
     raw = results / "raw_clustering_metrics_corrected.csv"
     rc = _run([
-        PYTHON, "src/run_clustering_analysis.py", "--base-dir", str(base_dir),
+        PYTHON, "-m", "histodae.cli.cluster", "--base-dir", str(base_dir),
         "--k", str(k), "--normalize", "standardize_l2", "--output", str(raw),
     ], logs_dir / "clustering_analysis.log", env=env)
     if rc != 0 or not raw.exists():
         print("⚠️  clustering analysis failed; skipping stats")
         return
     _run([
-        PYTHON, "src/compute_statistical_significance.py", "--input", str(raw),
+        PYTHON, "-m", "histodae.cli.stats", "--input", str(raw),
         "--baseline", "baseline",
         "--output", str(results / "clustering_summary_corrected.csv"),
         "--tests-output", str(results / "statistical_tests_corrected.csv"),
