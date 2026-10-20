@@ -4,21 +4,43 @@
 # DEC: dae_kan_attention objective-ON x 3 seeds (separate clone).
 # Usage: setsid -f ./gpukc_sweep.sh </dev/null >>sweep.log 2>&1  (from histodae_joiv/)
 set -u
-PROJ=/mnt/home/dzakirm/histodae_joiv
+# Overridable so the clone-preparation logic can be exercised locally.
+PROJ="${PROJ:-/mnt/home/dzakirm/histodae_joiv}"
 export HF_HOME=/mnt/home/dzakirm/hf_hub_cache
 export WANDB_MODE=offline
 cd "$PROJ" || exit 1
 . .venv/bin/activate
 LOG="$PROJ/sweep.log"
 
+# The Hub bundle is the single source of truth for the code this sweep runs.
+# It is re-downloaded on every sweep, and an existing clone is reset onto it,
+# so publishing a new bundle is enough to roll the sweep forward.
+BUNDLE_REPO="pytholove/dae-kan-attn-joiv-rev"
+BUNDLE_REL="code/histodae_code.bundle"
+BUNDLE="$PROJ/hub_code_tmp/$BUNDLE_REL"
+
 prep_clone() {  # <dir>
   local d="$1"
+  rm -rf "$PROJ/hub_code_tmp"
+  hf download "$BUNDLE_REPO" --repo-type model "$BUNDLE_REL" \
+    --local-dir "$PROJ/hub_code_tmp" >>"$LOG" 2>&1
+  [ -f "$BUNDLE" ] || { echo "FATAL: bundle download failed for $d" >>"$LOG" 2>&1; exit 1; }
+
   if [ ! -d "$d/.git" ]; then
-    rm -rf "$d" hub_code_tmp
-    hf download pytholove/dae-kan-attn-joiv-rev --repo-type model \
-      code/histodae_code.bundle --local-dir hub_code_tmp >>"$LOG" 2>&1
-    git clone -q hub_code_tmp/code/histodae_code.bundle "$d" >>"$LOG" 2>&1
+    rm -rf "$d"
+    git clone -q "$BUNDLE" "$d" >>"$LOG" 2>&1
+  else
+    # Roll the existing clone onto the bundle's branch. `reset --hard` leaves
+    # untracked files alone, so the run outputs and the data symlinks set up
+    # below survive.
+    local ref
+    ref="$(git bundle list-heads "$BUNDLE" | awk '/refs\/heads\//{print $2; exit}')"
+    [ -n "$ref" ] || { echo "FATAL: bundle has no branch for $d" >>"$LOG" 2>&1; exit 1; }
+    git -C "$d" fetch -q "$BUNDLE" "$ref:refs/remotes/bundle/main" >>"$LOG" 2>&1
+    git -C "$d" reset -q --hard refs/remotes/bundle/main >>"$LOG" 2>&1
+    echo "updated $d to $(git -C "$d" rev-parse --short HEAD 2>/dev/null)" >>"$LOG"
   fi
+
   [ -f "$d/run_corrected_pipeline.py" ] || { echo "FATAL: clone failed for $d" >>"$LOG" 2>&1; exit 1; }
   mkdir -p "$d/data/processed/HeparUnifiedPNG" "$d/data/processed"
   rm -rf "$d/data/processed/PANnuke"
