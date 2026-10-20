@@ -53,16 +53,16 @@ dev = [
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-# `histodae` is the ONLY real package. The flat names below are thin
+# `histodae` is the ONLY real package. The four flat names below are thin
 # compatibility shims: each one re-points `sys.modules` at the canonical
 # module so `import histodata` and `from histodae.data.datasets import ...`
 # resolve to the *same* module object (no duplicate class identities).
-py-modules = ["histodata", "metadata", "clustering_metrics", "clustering_objective",
-              "run_corrected_pipeline", "run_clustering_analysis",
-              "compute_statistical_significance", "generate_clustering_plots",
-              "generate_latex_tables", "evaluate_stats", "create_hepar_csv",
-              "create_pannuke_csv", "pl_training_with_analysis_and_optimization",
-              "extract_embeddings_for_clustering"]
+#
+# The per-stage script shims (run_corrected_pipeline.py, ...) are NOT
+# installed: they exist in the repo as files, for `python src/<stage>.py`
+# invocation and for the remote sweep's clone-root entry point. Their
+# console-script equivalents live under `histodae.cli.*`.
+py-modules = ["histodata", "metadata", "clustering_metrics", "clustering_objective"]
 
 [project.scripts]
 histodae = "histodae.cli:cli"
