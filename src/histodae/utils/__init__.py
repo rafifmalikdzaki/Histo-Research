@@ -1,15 +1,10 @@
-"""
-Utilities for DAE-KAN Experiments
+"""Shared utilities: reproducibility (seeding, run dirs, config) and W&B integration.
 
-This package provides utility functions for:
-- Reproducibility (seed setting, experiment tracking)
-- Configuration management
-- Metrics computation
-- Data processing
-- Weights & Biases integration
+Statistics live in :mod:`histodae.stats`; run-artifact IO lives in
+:mod:`histodae.io`. This package stays deliberately small so that
+``import histodae.utils`` does not drag in pandas/sklearn.
 """
 
-from .reporting import load_data, load_raw_metrics
 from .reproducibility import (
     create_experiment_config,
     create_experiment_directory,
@@ -24,7 +19,6 @@ from .reproducibility import (
     save_json,
     set_seed,
 )
-from .stats import compute_cohens_d, format_mean_std, summarize_values
 from .wandb_utils import (
     check_wandb_login,
     format_run_name,
@@ -51,13 +45,6 @@ __all__ = [
     'get_default_hyperparameters',
     'create_experiment_config',
     'get_experiment_config_from_dir',
-    # Statistics
-    'compute_cohens_d',
-    'format_mean_std',
-    'summarize_values',
-    # Reporting
-    'load_data',
-    'load_raw_metrics',
     # W&B utilities
     'get_wandb_config',
     'get_group_for_model',

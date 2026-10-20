@@ -11,10 +11,10 @@ from types import SimpleNamespace
 
 import torch
 
-from src.clustering_objective import LatentProjectionHead
-from src.pl_training_with_analysis_and_optimization import (
+from histodae.cli.train import (
     OptimizedMainModelWithAnalysis,
 )
+from histodae.clustering.dec import LatentProjectionHead
 
 
 def _stub(head):

@@ -16,12 +16,16 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
-sys.path.insert(0, str(Path(__file__).parent))
-from extract_embeddings_for_clustering import TileDataset, _load_state_dict  # noqa: E402
-from histodata import load_metadata  # noqa: E402
-from models.factory import get_model  # noqa: E402
-from src.clustering_objective import LatentProjectionHead  # noqa: E402
-from src.clustering_metrics import internal_metrics, external_metrics, normalize_embeddings  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+from histodae.cli.extract import TileDataset, _load_state_dict  # noqa: E402
+from histodae.clustering.dec import LatentProjectionHead  # noqa: E402
+from histodae.clustering.metrics import (  # noqa: E402
+    external_metrics,
+    internal_metrics,
+    normalize_embeddings,
+)
+from histodae.data.datasets import load_metadata  # noqa: E402
+from histodae.models.factory import get_model  # noqa: E402
 from sklearn.cluster import KMeans, BisectingKMeans  # noqa: E402
 from sklearn.mixture import GaussianMixture  # noqa: E402
 

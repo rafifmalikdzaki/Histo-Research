@@ -9,9 +9,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.utils.seed_pairing import _align_seed_pairs
-from src.utils.stats import compute_cohens_d
-from src.utils.stats_tables import (
+from histodae.stats.metrics import compute_cohens_d
+from histodae.stats.pairing import _align_seed_pairs
+from histodae.stats.tables import (
     _parse_literal_list,
     compute_summary_statistics,
     run_statistical_tests,

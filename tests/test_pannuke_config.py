@@ -32,11 +32,11 @@ def test_pannuke_csvs_and_images_present():
 
 
 def test_training_script_configured_for_pannuke():
-    script = _require("src/pl_training_with_analysis_and_optimization.py").read_text()
+    script = _require("src/histodae/cli/train.py").read_text()
     assert "'pannuke': 'PANnuke'" in script  # CLI value maps to histodata name
     assert "--dataset" in script
 
 
 def test_histodata_supports_dataset_selection():
-    content = _require("src/histodata.py").read_text()
+    content = _require("src/histodae/data/datasets.py").read_text()
     assert 'dataset_name: str = "HeparUnifiedPNG"' in content

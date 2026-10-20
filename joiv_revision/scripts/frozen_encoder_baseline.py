@@ -12,8 +12,12 @@ import torch
 import torchvision
 from PIL import Image
 
-sys.path.insert(0, str(Path(__file__).parent))
-from src.clustering_metrics import internal_metrics, external_metrics, normalize_embeddings  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+from histodae.clustering.metrics import (  # noqa: E402
+    external_metrics,
+    internal_metrics,
+    normalize_embeddings,
+)
 from sklearn.cluster import KMeans, BisectingKMeans  # noqa: E402
 from sklearn.mixture import GaussianMixture  # noqa: E402
 

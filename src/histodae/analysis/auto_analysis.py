@@ -21,10 +21,10 @@ import torch
 import torch.nn as nn
 from skimage import measure
 
-from analysis.embedding_cluster import EmbeddingClusterMixin
-from analysis.viz import VizMixin
-from analysis.viz_components import VizComponentsMixin
-from analysis.viz_dashboard import VizDashboardMixin
+from histodae.analysis.embedding_cluster import EmbeddingClusterMixin
+from histodae.analysis.viz import VizMixin
+from histodae.analysis.viz_components import VizComponentsMixin
+from histodae.analysis.viz_dashboard import VizDashboardMixin
 
 warnings.filterwarnings('ignore')
 
@@ -37,7 +37,7 @@ except ImportError:
     print("⚠ wandb not available - W&B logging will be disabled")
 
 try:
-    from models.dae import DAE_KAN_Attention  # noqa: F401  (availability probe)
+    from histodae.models.dae import DAE_KAN_Attention  # noqa: F401  (availability probe)
 except ImportError:
     pass
 

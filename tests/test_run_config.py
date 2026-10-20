@@ -6,7 +6,7 @@ single-file parser backing the evaluate-stats dataset scan.
 
 import json
 
-from src.utils.reproducibility import read_config_file, read_run_config
+from histodae.utils.reproducibility import read_config_file, read_run_config
 
 
 def _run_dir(tmp_path, name="run_a"):

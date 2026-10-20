@@ -12,8 +12,8 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ttest_rel, wilcoxon
 
-from utils.seed_pairing import _align_seed_pairs
-from utils.stats import compute_cohens_d, format_mean_std, summarize_values
+from histodae.stats.metrics import compute_cohens_d, format_mean_std, summarize_values
+from histodae.stats.pairing import _align_seed_pairs
 
 __all__ = [
     "METRICS",

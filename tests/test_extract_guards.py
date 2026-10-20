@@ -1,4 +1,4 @@
-"""Edge guards for src/extract_embeddings_for_clustering.extract.
+"""Edge guards for histodae.cli.extract.extract.
 
 Runs the real function on CPU with a randomly-initialised baseline model and
 tiny synthetic tiles (no checkpoint, no dataset checkout): missing image
@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 from PIL import Image
 
-from src import extract_embeddings_for_clustering as ext
+from histodae.cli import extract as ext
 
 
 def _tiles(tmp_path, n):

@@ -6,7 +6,7 @@ needing a GPU or a full training run.
 
 import torch
 
-from src.clustering_objective import DECClusteringLoss, LatentProjectionHead
+from histodae.clustering.dec import DECClusteringLoss, LatentProjectionHead
 
 
 def test_projection_shape_and_unit_norm():

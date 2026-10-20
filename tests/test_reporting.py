@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from src.utils.reporting import load_data
+from histodae.io.reporting import load_data
 
 
 def test_loads_both_csvs(tmp_path):

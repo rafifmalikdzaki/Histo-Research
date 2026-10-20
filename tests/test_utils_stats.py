@@ -1,4 +1,4 @@
-"""Guards the single-source paired Cohen's d in src/utils/stats.py.
+"""Guards the single-source paired Cohen's d in histodae/stats/metrics.py.
 
 Both stats entry points must share one identical function object so the
 estimator cannot drift again (the NaN guard once existed in only one copy).
@@ -7,13 +7,9 @@ estimator cannot drift again (the NaN guard once existed in only one copy).
 import numpy as np
 import pytest
 
-from src import compute_statistical_significance as sig
-from src import evaluate_stats as ev
-
-# NOTE: import via the installed top-level path — the same path the scripts
-# themselves use (`from utils.stats import ...`) — so `is` compares one
-# shared module object, not the `src.utils.stats` namespace-package twin.
-from utils import stats as shared
+from histodae.cli import evaluate as ev
+from histodae.cli import stats as sig
+from histodae.stats import metrics as shared
 
 
 def test_both_entry_points_share_one_function_object():

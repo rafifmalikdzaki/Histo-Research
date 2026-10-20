@@ -5,7 +5,7 @@ This module provides standardized W&B configuration and logging utilities
 to ensure consistent experiment tracking across all scripts.
 
 Usage:
-    from utils.wandb_utils import get_wandb_config, setup_wandb_logger
+    from histodae.utils.wandb_utils import get_wandb_config, setup_wandb_logger
 
     # Load configuration
     config = get_wandb_config()
@@ -25,16 +25,20 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from histodae.config import WANDB_CONFIG, load_config
+
 if TYPE_CHECKING:
     from pytorch_lightning.loggers import WandbLogger
 
 
-def get_wandb_config(config_path: str = "config/wandb_config.yaml") -> dict[str, Any]:
+def get_wandb_config(config_path: str | None = None) -> dict[str, Any]:
     """
     Load W&B configuration from YAML file.
 
     Args:
-        config_path: Path to W&B configuration file.
+        config_path: Path to W&B configuration file. When omitted, the
+            packaged default is used, so the lookup never depends on the
+            current working directory.
 
     Returns:
         Dictionary containing W&B configuration.
@@ -42,25 +46,24 @@ def get_wandb_config(config_path: str = "config/wandb_config.yaml") -> dict[str,
     Raises:
         FileNotFoundError: If config file doesn't exist.
     """
-    config_file = Path(config_path)
-
-    if not config_file.exists():
-        # Try alternative paths
-        for alt_path in [
-            Path(__file__).parent.parent / "config" / "wandb_config.yaml",
-            Path("config") / "wandb_config.yaml",
-        ]:
-            if alt_path.exists():
-                config_file = alt_path
-                break
-        else:
+    if config_path is not None:
+        config_file = Path(config_path)
+        if not config_file.exists():
             raise FileNotFoundError(
                 f"W&B config not found at {config_path}. "
                 "Please create it or set WANDB_PROJECT environment variable."
             )
+        with open(config_file) as f:
+            config = yaml.safe_load(f)
+    else:
+        # Packaged default (with an optional user override in a source checkout).
+        config = load_config(WANDB_CONFIG)
 
-    with open(config_file) as f:
-        config = yaml.safe_load(f)
+    if not config:
+        raise FileNotFoundError(
+            "W&B config is empty or missing. "
+            "Please create it or set WANDB_PROJECT environment variable."
+        )
 
     # Override with environment variables if set
     if os.getenv('WANDB_ENTITY'):
@@ -224,9 +227,10 @@ def setup_wandb_logger(model_name: str,
     if entity == "PLACEHOLDER_REPLACE_WITH_YOUR_USERNAME":
         import warnings
         warnings.warn(
-            "W&B entity not configured. Please edit config/wandb_config.yaml "
-            "and replace 'PLACEHOLDER_REPLACE_WITH_YOUR_USERNAME' with your "
-            "W&B username or team name. Logging to personal workspace."
+            "W&B entity not configured. Please edit the W&B config "
+            "(histodae/config/wandb.yaml, or config/wandb.yaml in a source "
+            "checkout) and replace 'PLACEHOLDER_REPLACE_WITH_YOUR_USERNAME' "
+            "with your W&B username or team name. Logging to personal workspace."
         )
         entity = None  # Will use personal workspace
 

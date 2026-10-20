@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-TRAINING_SCRIPT = Path("src/pl_training_with_analysis_and_optimization.py")
+TRAINING_SCRIPT = Path("src/histodae/cli/train.py")
 
 CSV_FILES = [
     "data/processed/train_pannuke.csv",
@@ -47,7 +47,7 @@ def test_training_script_accepts_dataset_flag():
 def test_histodata_loads_both_datasets():
     for csv_path in CSV_FILES:
         _require(csv_path)
-    from src.histodata import create_dataset
+    from histodae.data.datasets import create_dataset
 
     for dataset_name in ("PANnuke", "HeparUnifiedPNG"):
         X, y = create_dataset("train", dataset_name=dataset_name)

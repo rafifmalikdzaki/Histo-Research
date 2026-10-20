@@ -8,7 +8,7 @@ These guard against the regressions that made the original metrics untrustworthy
 
 import numpy as np
 
-from src.clustering_metrics import (
+from histodae.clustering.metrics import (
     external_metrics,
     internal_metrics,
     normalize_embeddings,

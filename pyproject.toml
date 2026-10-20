@@ -52,8 +52,10 @@ dev = [
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-# Top-level src modules shipped as-is (frozen JOIV scripts import these
-# names; do not rename without shims).
+# `histodae` is the ONLY real package. The flat names below are thin
+# compatibility shims: each one re-points `sys.modules` at the canonical
+# module so `import histodata` and `from histodae.data.datasets import ...`
+# resolve to the *same* module object (no duplicate class identities).
 py-modules = ["histodata", "metadata", "clustering_metrics", "clustering_objective",
               "run_corrected_pipeline", "run_clustering_analysis",
               "compute_statistical_significance", "generate_clustering_plots",
@@ -62,25 +64,31 @@ py-modules = ["histodata", "metadata", "clustering_metrics", "clustering_objecti
               "extract_embeddings_for_clustering"]
 
 [project.scripts]
-histodae-train = "pl_training_with_analysis_and_optimization:main"
-histodae-extract = "extract_embeddings_for_clustering:main"
-histodae-pipeline = "run_corrected_pipeline:main"
-histodae-cluster = "run_clustering_analysis:main"
-histodae-stats = "compute_statistical_significance:main"
-histodae-plots = "generate_clustering_plots:main"
-histodae-tables = "generate_latex_tables:main"
-histodae-evaluate = "evaluate_stats:main"
-histodae-make-hepar-csv = "create_hepar_csv:main"
-histodae-make-pannuke-csv = "create_pannuke_csv:main"
+histodae = "histodae.cli:cli"
+histodae-train = "histodae.cli.train:main"
+histodae-extract = "histodae.cli.extract:main"
+histodae-pipeline = "histodae.cli.pipeline:main"
+histodae-cluster = "histodae.cli.cluster:main"
+histodae-stats = "histodae.cli.stats:main"
+histodae-plots = "histodae.cli.plots:main"
+histodae-tables = "histodae.cli.tables:main"
+histodae-evaluate = "histodae.cli.evaluate:main"
+histodae-make-hepar-csv = "histodae.cli.make_hepar_csv:main"
+histodae-make-pannuke-csv = "histodae.cli.make_pannuke_csv:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["models*", "utils*", "analysis*", "training*", "histodae"]
+include = ["histodae*"]
+
+[tool.setuptools.package-data]
+histodae = ["config/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-q"
+# Tests import the public namespace (`histodae.*`), not the source layout.
+pythonpath = ["src"]
 
 [tool.ruff]
 target-version = "py311"
@@ -91,13 +99,15 @@ select = ["E", "F", "W", "I", "UP"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["src"]
+known-first-party = ["histodae"]
 
 [tool.ruff.lint.per-file-ignores]
 # Late imports are intentional here: warnings filters (and the matplotlib
 # backend selection) must run before the heavy third-party imports below them.
-"run_clustering_analysis.py" = ["E402"]
-"compute_statistical_significance.py" = ["E402"]
-"generate_clustering_plots.py" = ["E402"]
-"generate_latex_tables.py" = ["E402"]
-"src/pl_training_with_analysis_and_optimization.py" = ["E402"]
+"histodae/cli/cluster.py" = ["E402"]
+"histodae/cli/stats.py" = ["E402"]
+"histodae/cli/plots.py" = ["E402"]
+"histodae/cli/tables.py" = ["E402"]
+"histodae/cli/train.py" = ["E402"]
+# The flat compatibility shims deliberately import after adjusting sys.path.
+"src/*.py" = ["E402"]

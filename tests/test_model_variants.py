@@ -11,8 +11,8 @@ pin the structure so refactors cannot silently change it:
 import pytest
 import torch
 
-from src.models.dae import VARIANT_CONFIGS, DualAutoencoder
-from src.models.factory import MODELS, get_model
+from histodae.models.dae import VARIANT_CONFIGS, DualAutoencoder
+from histodae.models.factory import MODELS, get_model
 
 # Audited 2026-10-18 against the pre-unification per-variant files
 # (bit-identical state_dict keys and forward outputs on CUDA).

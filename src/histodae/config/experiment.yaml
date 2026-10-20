@@ -227,47 +227,6 @@ evaluation:
   confidence_level: 0.95
 
 # ============================================================================
-# HYPERPARAMETER SENSITIVITY ANALYSIS
-# ============================================================================
-sensitivity_analysis:
-  enabled: true
-  
-  # Parameter ranges to sweep
-  latent_dim: [32, 64, 128, 256]
-  n_clusters: [3, 4, 5, 6, 7]
-  kan_spline_order: [3, 5, 7]
-  eca_kernel_size: [3, 5, 7]
-  
-  # Grid search settings
-  n_jobs: 1  # Parallel jobs (1 for GPU)
-  verbose: true
-
-# ============================================================================
-# CROSS-DOMAIN TRANSFER
-# ============================================================================
-transfer_learning:
-  # Transfer directions
-  directions:
-    - source: "PanNuke"
-      target: "HeparUnifiedPNG"
-    - source: "HeparUnifiedPNG"
-      target: "PanNuke"
-  
-  # Fine-tuning strategy
-  strategy:
-    # Which layers to freeze
-    freeze_encoder: false
-    freeze_bottleneck: false
-    freeze_decoder: false
-    
-    # Fine-tuning learning rate
-    finetune_lr: 0.0001
-    finetune_epochs: 10
-    
-    # Layer-wise learning rate decay
-    layer_decay: 1.0  # No decay by default
-
-# ============================================================================
 # COMPUTATIONAL RESOURCES
 # ============================================================================
 resources:

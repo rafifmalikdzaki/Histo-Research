@@ -10,8 +10,8 @@ from pathlib import Path
 
 import yaml
 
-from src.run_clustering_analysis import extract_model_name, extract_seed
-from src.run_corrected_pipeline import _stamp_run_seed
+from histodae.cli.cluster import extract_model_name, extract_seed
+from histodae.cli.pipeline import _stamp_run_seed
 
 
 def _run_dir(tmp_path: Path, name: str) -> Path:

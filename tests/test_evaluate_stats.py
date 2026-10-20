@@ -12,12 +12,12 @@ import numpy as np
 import pytest
 import yaml
 
-from src.evaluate_stats import (
+from histodae.cli.evaluate import (
     aggregate_multi_seed_results,
     compute_cohens_d,
     compute_statistical_tests,
 )
-from src.utils.run_discovery import find_experiment_runs
+from histodae.io.run_discovery import find_experiment_runs
 
 
 def _make_run(base: Path, name: str, seed: int, dataset: str,
