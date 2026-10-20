@@ -7,7 +7,7 @@ liver samples from a NAFLD / statin-intervention study under seven treatment
 conditions (HFD+atorvastatin, ND+atorvastatin, HFD+vehicle, HFD positive
 control, HFD+simvastatin, ND control, ND normal), with diet (ND/HFD),
 magnification (10×/20×/40×), specimen identity, and tile index recoverable from
-filenames (parsed with zero failures by `src/metadata.py`). Tiling yields 21,168
+filenames (parsed with zero failures by `src/histodae/data/metadata.py`). Tiling yields 21,168
 tiles at 128×128 pixels in RGB; the flat `tiles/` directory is the single source
 of truth. The secondary source is PanNuke, a multi-organ histology collection
 (7,901 patches including liver, kidney, breast, and other tissues) used for

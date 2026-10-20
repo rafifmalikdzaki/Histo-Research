@@ -16,16 +16,16 @@ Evidence repo files are the corrected pipeline (scouting done; multi-seed sweep 
 
 | # | Point | Manuscript change | Evidence |
 |---|-------|-------------------|----------|
-| A1 | Clarify datasets, sample sizes, treatment groups, patching, patient-level splitting, preprocessing, augmentation; exclude leakage | Replace §II.A: specimen-level stratified split w/ disjointness assertion; full dataset spec | `create_hepar_csv.py`, `src/metadata.py` |
-| A2 | Explain how dual AE differs from conventional AE; full architecture/optimisation/implementation details | Dual-vs-conventional paragraph + architecture table + optimizer/seeds | `src/models/` |
+| A1 | Clarify datasets, sample sizes, treatment groups, patching, patient-level splitting, preprocessing, augmentation; exclude leakage | Replace §II.A: specimen-level stratified split w/ disjointness assertion; full dataset spec | `histodae data hepar` (`src/histodae/cli/make_hepar_csv.py`), `src/histodae/data/metadata.py` |
+| A2 | Explain how dual AE differs from conventional AE; full architecture/optimisation/implementation details | Dual-vs-conventional paragraph + architecture table + optimizer/seeds | `src/histodae/models/` |
 | A3 | Unsupervised task but reports accuracy/precision/recall/F1 without ground truth | Remove Table IV classification block (or define supervised probe) | — |
-| A4 | Report k, selection procedure, init, seeds, repeated-run stats, CIs for all clustering metrics | k=6 justification + multi-seed mean±std + Holm tests | `compute_statistical_significance.py` |
-| A5 | Internal indices + visuals alone don't prove biology/treatment relevance | External validation table (AMI/ARI vs treatment/diet) + confound control | `run_clustering_analysis.py`, `per_magnification_analysis.py` |
-| A6 | Add expert quantitative validation, contemporary-method comparison, external dataset eval | Pathologist montages+template (scores if available); pretrained-encoder baseline minimum; SSL stretch | `cluster_biology_analysis.py`, `baselines/` |
+| A4 | Report k, selection procedure, init, seeds, repeated-run stats, CIs for all clustering metrics | k=6 justification + multi-seed mean±std + Holm tests | `histodae stats` (`src/histodae/cli/stats.py`) |
+| A5 | Internal indices + visuals alone don't prove biology/treatment relevance | External validation table (AMI/ARI vs treatment/diet) + confound control | `histodae cluster` (`src/histodae/cli/cluster.py`), `histodae per-magnification` (`src/histodae/cli/per_magnification.py`) |
+| A6 | Add expert quantitative validation, contemporary-method comparison, external dataset eval | Pathologist montages+template (scores if available); pretrained-encoder baseline minimum; SSL stretch | `histodae biology` (`src/histodae/cli/biology.py`), `archive/scripts/baselines/` |
 | A7 | DBI 3.633 vs ~0.4 in Table IV; cross-check all tables/figures/text | One frozen number system; retire old numbers | corrected CSVs |
-| A8 | Perf numbers ill-defined/inconsistent (ms/image, throughput, memory, s/epoch, s/1000) | One profiling protocol on named hardware; arithmetic check | `profile_runtime.py` |
+| A8 | Perf numbers ill-defined/inconsistent (ms/image, throughput, memory, s/epoch, s/1000) | One profiling protocol on named hardware; arithmetic check | `histodae profile` (`src/histodae/cli/profile.py`) |
 | A9 | Math notation: ELU malformed, CHI typo, incomplete index/variable definitions | Fix equations 1–5, define all variables | — |
-| A10 | Stronger ablations: isolate all components, report variability, control capacity | 7-variant ablation w/ variance + params column | `run_corrected_pipeline.py` |
+| A10 | Stronger ablations: isolate all components, report variability, control capacity | 7-variant ablation w/ variance + params column | `histodae pipeline` (`src/histodae/cli/pipeline.py`) |
 | A11 | Moderate "biologically coherent / reliable / robust / treatment-related" | Soften unless backed by A5 evidence | — |
 | A12 | Language, formatting, figure readability, reference consistency, journal style | Full pass | — |
 

@@ -26,7 +26,7 @@ raw compute measurements), we state the gap plainly instead of claiming it.
 **A1 — Datasets, splitting, leakage.** Correct: the original 70/15/15 per-tile
 split leaked near-duplicate tiles from the same specimen across folds. Replaced
 with a specimen-level grouped split stratified by treatment group
-(`StratifiedGroupKFold`; `create_hepar_csv.py` asserts
+(`StratifiedGroupKFold`; `histodae data hepar` (`src/histodae/cli/make_hepar_csv.py`) asserts
 `set(train.specimen) ∩ set(test.specimen) = ∅`): 16,632 tiles / 154 specimens
 train, 4,536 tiles / 42 specimens test, all 7 treatment groups in both. Methods
 now specify cohort, patch extraction (128×128, RGB, per-channel normalisation),
@@ -70,7 +70,7 @@ is retired); diet-AMI 0.454–0.489 vs baseline 0.459.
 
 **A6 — Expert validation, contemporary baselines, external data.** Per-cluster
 montages (centroid-nearest + random) and a structured scoring template are
-exported for pathologist review (`cluster_biology_analysis.py`); scores are
+exported for pathologist review (`histodae biology` (`src/histodae/cli/biology.py`)); scores are
 outstanding at submission and are stated as a limitation, with Cramér's V and
 enrichment statistics reported in their place. Baselines: frozen pretrained-encoder + KMeans
 through the identical eval path (minimum); SimCLR/BYOL/VAE (frozen ResNet-50 reported; full SSL training stated as future work). No replicated contemporary-method comparison and no independent external-cohort clustering evaluation are available at submission; both are stated as limitations, not claimed. PanNuke is used strictly as multi-organ pre-training source, not as an external evaluation arm (the old classification block is removed per A3).
@@ -87,7 +87,7 @@ jitter (~14% of mean embedding norm) without leaving the metric band;
 exact-embedding determinism is reported as an open item.
 
 **A8 — Compute measurements.** One protocol on named hardware
-(gpu-kc, NVIDIA RTX 3060 12 GB), instrumented with `profile_runtime.py`
+(gpu-kc, NVIDIA RTX 3060 12 GB), instrumented with `histodae profile` (`src/histodae/cli/profile.py`)
 (batch size 8, all 7 variants; raw output in `results/profile_raw.csv`):
 Table II reports inference ms/image (baseline 28.7, full 36.9), throughput
 (34.9 / 27.1 images/s), s per 1,000 patches, parameter count (4.90M / 5.23M),

@@ -1,9 +1,9 @@
 # DEC checkpoint-restoration verification (gpu-kc, 2026-10-18)
 
-Method: `extract_embeddings_for_clustering.py --phase test` re-run from each
+Method: `histodae extract --phase test` (`src/histodae/cli/extract.py`) re-run from each
 DEC run's `checkpoints/last.ckpt` (the same checkpoint the pipeline's
 `_find_checkpoint` prefers), then KMeans k=6 / standardize_l2 vs
-`treatment_group`, compared against `results/frozen_metrics.csv` DEC arm
+`treatment_group`, compared against `joiv_revision/results/frozen_metrics.csv` DEC arm
 (AMI 0.399±0.033, Sil 0.040±0.002, DBI 4.19±0.20).
 
 ## Metric-level reproducibility: PASS

@@ -41,7 +41,7 @@ liver samples from a NAFLD / statin-intervention study under seven treatment
 conditions (HFD+atorvastatin, ND+atorvastatin, HFD+vehicle, HFD positive
 control, HFD+simvastatin, ND control, ND normal), with diet (ND/HFD),
 magnification (10×/20×/40×), specimen identity, and tile index recoverable from
-filenames (parsed with zero failures by `src/metadata.py`). Tiling yields 21,168
+filenames (parsed with zero failures by `src/histodae/data/metadata.py`). Tiling yields 21,168
 tiles at 128×128 pixels in RGB; the flat `tiles/` directory is the single source
 of truth. The secondary source is PanNuke, a multi-organ histology collection
 (7,901 patches including liver, kidney, breast, and other tissues) used for
@@ -201,7 +201,7 @@ One protocol is used for all compute reporting (NVIDIA GeForce RTX 3060 12 GB, b
 | Baseline AE | 4.90 | 28.7 | 34.9 | 28.7 | 627 |
 | DAE-KAN-Attn (full) | 5.23 | 36.9 | 27.1 | 36.9 | 566 |
 
-Instrumented on the same RTX 3060 protocol (batch size 8; `profile_runtime.py`, all 7 variants in `results/profile_raw.csv`). The full model's overhead is +29% inference time for +7% parameters — a modest, honestly reported cost of the KAN and attention modules.
+Instrumented on the same RTX 3060 protocol (batch size 8; `histodae profile` (`src/histodae/cli/profile.py`), all 7 variants in `joiv_revision/results/profile_raw.csv`). The full model's overhead is +29% inference time for +7% parameters — a modest, honestly reported cost of the KAN and attention modules.
 
 ## F. Contemporary Baseline and Biological Association
 
