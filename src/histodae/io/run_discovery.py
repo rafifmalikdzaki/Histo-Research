@@ -11,8 +11,8 @@ from typing import Any
 
 import pandas as pd
 
+from histodae.io.run_config import read_config_file
 from histodae.stats.tables import METRICS
-from histodae.utils.reproducibility import read_config_file
 
 __all__ = [
     "find_experiment_runs",
