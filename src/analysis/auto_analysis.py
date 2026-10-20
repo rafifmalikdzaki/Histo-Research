@@ -23,6 +23,8 @@ from skimage import measure
 
 from analysis.embedding_cluster import EmbeddingClusterMixin
 from analysis.viz import VizMixin
+from analysis.viz_components import VizComponentsMixin
+from analysis.viz_dashboard import VizDashboardMixin
 
 warnings.filterwarnings('ignore')
 
@@ -40,7 +42,8 @@ except ImportError:
     pass
 
 
-class AutomaticAnalyzer(VizMixin, EmbeddingClusterMixin):
+class AutomaticAnalyzer(VizMixin, VizDashboardMixin, VizComponentsMixin,
+                        EmbeddingClusterMixin):
     """
     Automatic analysis system that integrates all analysis components with run-based organization
     """

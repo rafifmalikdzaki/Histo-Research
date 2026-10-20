@@ -162,14 +162,14 @@ def aggregate(base_dir: Path, k: int, logs_dir: Path, env: dict) -> None:
     results.mkdir(exist_ok=True)
     raw = results / "raw_clustering_metrics_corrected.csv"
     rc = _run([
-        PYTHON, "run_clustering_analysis.py", "--base-dir", str(base_dir),
+        PYTHON, "src/run_clustering_analysis.py", "--base-dir", str(base_dir),
         "--k", str(k), "--normalize", "standardize_l2", "--output", str(raw),
     ], logs_dir / "clustering_analysis.log", env=env)
     if rc != 0 or not raw.exists():
         print("⚠️  clustering analysis failed; skipping stats")
         return
     _run([
-        PYTHON, "compute_statistical_significance.py", "--input", str(raw),
+        PYTHON, "src/compute_statistical_significance.py", "--input", str(raw),
         "--baseline", "baseline",
         "--output", str(results / "clustering_summary_corrected.csv"),
         "--tests-output", str(results / "statistical_tests_corrected.csv"),

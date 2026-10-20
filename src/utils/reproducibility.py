@@ -325,6 +325,47 @@ def get_experiment_config_from_dir(exp_dir: Path) -> dict[str, Any]:
     )
 
 
+def read_config_file(config_path: Path) -> dict[str, Any]:
+    """Best-effort parse of one YAML/JSON config file; ``{}`` on any failure.
+
+    Unlike :func:`load_config` (strict, YAML-only, raises), this never raises:
+    missing files, parse errors, unknown suffixes, and non-mapping documents
+    all yield ``{}``. Used by run-dir scanners that must survive partial runs.
+    """
+    try:
+        text = Path(config_path).read_text()
+    except OSError:
+        return {}
+    try:
+        suffix = Path(config_path).suffix.lower()
+        if suffix in ('.yaml', '.yml'):
+            meta = yaml.safe_load(text)
+        elif suffix == '.json':
+            meta = json.loads(text)
+        else:
+            return {}
+    except Exception:
+        return {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def read_run_config(exp_dir: Path) -> dict[str, Any]:
+    """Best-effort merged training metadata recorded inside a run dir.
+
+    Reads ``configs/experiment.yaml`` and ``configs/experiment.json`` (written
+    by current training via :func:`create_experiment_config` and stamped by the
+    pipeline with the seed), merged with JSON winning on conflict; in practice
+    both are written together with identical content. Returns ``{}`` when
+    absent or unreadable — callers treat a missing key as "unknown", never as
+    an error.
+    """
+    merged: dict[str, Any] = {}
+    base = Path(exp_dir) / 'configs'
+    for name in ('experiment.yaml', 'experiment.json'):
+        merged.update(read_config_file(base / name))
+    return merged
+
+
 if __name__ == "__main__":
     # Test the reproducibility utilities
     print("Testing reproducibility utilities...\n")

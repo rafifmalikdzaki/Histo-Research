@@ -27,9 +27,9 @@ python src/pl_training_with_analysis_and_optimization.py \
 Corrected end-to-end sweep (train → extract test embeddings + biology metadata → cluster → Holm stats). This is the maintained orchestrator; the old `run_multi_seed_experiments.py` / `run_ablation_study.py` / `run_all_experiments.py` / `parallel_train.py` were stale (broken CLI, no metadata extraction) and have been removed:
 
 ```bash
-python run_corrected_pipeline.py --models dae_kan_attention baseline bam_only kan_only no_bam no_kan no_eka \
+python src/run_corrected_pipeline.py --models dae_kan_attention baseline bam_only kan_only no_bam no_kan no_eka \
     --seeds 42 123 456 789 1011 --epochs 30 --dataset hepar --k 6
-python evaluate_stats.py --model dae_kan_attention --dataset HeparUnifiedPNG --run-tests --output results/summary_stats.csv
+python src/evaluate_stats.py --model dae_kan_attention --dataset HeparUnifiedPNG --run-tests --output results/summary_stats.csv
 ```
 
 Full clustering analysis pipeline (extract metrics → significance tests → plots → LaTeX tables):
@@ -47,7 +47,7 @@ Tests live in `tests/` (pytest; data-dependent cases skip cleanly without a data
 Clustering analysis with embedding normalization (new):
 
 ```bash
-python run_clustering_analysis.py --base-dir auto_analysis --k 6 \
+python src/run_clustering_analysis.py --base-dir auto_analysis --k 6 \
     --normalize standardize_l2 --output results/raw_clustering_metrics.csv
 ```
 

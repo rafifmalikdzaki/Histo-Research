@@ -16,8 +16,8 @@ from src.evaluate_stats import (
     aggregate_multi_seed_results,
     compute_cohens_d,
     compute_statistical_tests,
-    find_experiment_runs,
 )
+from src.utils.run_discovery import find_experiment_runs
 
 
 def _make_run(base: Path, name: str, seed: int, dataset: str,

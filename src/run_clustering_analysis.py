@@ -28,6 +28,7 @@ from clustering_metrics import (
     internal_metrics,
     normalize_embeddings,
 )
+from utils.reproducibility import read_run_config
 
 # Categorical metadata columns used for external validation, and the namespace
 # prefix each is reported under. Magnification is included as a CONFOUND check:
@@ -66,7 +67,7 @@ def extract_model_name(exp_dir: Path) -> str:
     dirname can misclassify. Trust the recorded ``model_name`` when it names
     a registered variant; otherwise fall back to dirname matching.
     """
-    recorded = _read_run_config(exp_dir).get('model_name')
+    recorded = read_run_config(exp_dir).get('model_name')
     if isinstance(recorded, str) and recorded:
         try:
             from models.factory import MODELS
@@ -94,34 +95,6 @@ def extract_model_name(exp_dir: Path) -> str:
         return 'unknown'
 
 
-def _read_run_config(exp_dir: Path) -> dict:
-    """Best-effort training metadata recorded inside a run directory.
-
-    Reads ``configs/experiment.yaml`` (written by current training via
-    ``utils.reproducibility`` and stamped by the pipeline with the seed) and
-    ``configs/experiment.json``, merged (json wins on conflict; in practice
-    both are written together with identical content). Returns {} when
-    absent/unreadable.
-    """
-    merged: dict = {}
-    for cfg in (exp_dir / 'configs' / 'experiment.yaml',
-                exp_dir / 'configs' / 'experiment.json'):
-        try:
-            if not cfg.exists():
-                continue
-            if cfg.suffix == '.yaml':
-                import yaml
-                meta = yaml.safe_load(cfg.read_text()) or {}
-            else:
-                import json
-                meta = json.loads(cfg.read_text())
-            if isinstance(meta, dict):
-                merged.update(meta)
-        except Exception:
-            continue
-    return merged
-
-
 def extract_seed(exp_dir: Path) -> int | None:
     """Best-effort seed for a run directory.
 
@@ -130,7 +103,7 @@ def extract_seed(exp_dir: Path) -> int | None:
     downstream pairing treats the arm as untagged instead of pairing every
     row on a bogus shared seed.
     """
-    seed = _read_run_config(exp_dir).get('seed')
+    seed = read_run_config(exp_dir).get('seed')
     if isinstance(seed, bool):
         pass
     elif isinstance(seed, float) and seed.is_integer():

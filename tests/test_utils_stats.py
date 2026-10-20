@@ -5,6 +5,7 @@ estimator cannot drift again (the NaN guard once existed in only one copy).
 """
 
 import numpy as np
+import pytest
 
 from src import compute_statistical_significance as sig
 from src import evaluate_stats as ev
@@ -30,6 +31,20 @@ def test_degenerate_arms_return_zero():
     assert shared.compute_cohens_d([1.0], [2.0]) == 0.0  # < 2 pairs
     assert shared.compute_cohens_d([1.0, 2.0], [1.0]) == 0.0  # unequal arms
     assert shared.compute_cohens_d([1.0, 1.0], [1.0, 1.0]) == 0.0  # zero spread
+
+
+def test_summarize_values_kernel():
+    s = shared.summarize_values([1.0, 2.0, 3.0, 4.0])
+    assert s["mean"] == 2.5
+    assert s["std"] == pytest.approx(np.std([1.0, 2.0, 3.0, 4.0], ddof=1))
+    assert (s["min"], s["max"], s["n"]) == (1.0, 4.0, 4)
+
+
+def test_summarize_values_single_and_empty():
+    s = shared.summarize_values([5.0])
+    assert (s["mean"], s["std"], s["n"]) == (5.0, 0.0, 1)
+    with pytest.raises(ValueError):
+        shared.summarize_values([])
 
 
 def test_format_mean_std_shared_and_none_safe():

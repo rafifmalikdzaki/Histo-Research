@@ -14,16 +14,25 @@ from clustering_metrics import (
 )
 from histodata import ImageDataset, create_dataset, load_metadata
 from models.factory import MODELS, get_model
+from utils.reporting import load_data, load_raw_metrics
+from utils.stats import compute_cohens_d, format_mean_std, summarize_values
+from utils.stats_tables import METRICS
 
 __all__ = [
     "MODELS",
     "NORMALIZERS",
     "ImageDataset",
+    "compute_cohens_d",
     "create_dataset",
     "external_metrics",
+    "format_mean_std",
     "get_model",
     "internal_metrics",
+    "load_data",
     "load_metadata",
+    "load_raw_metrics",
+    "METRICS",
     "normalize_embeddings",
+    "summarize_values",
     "xie_beni",
 ]

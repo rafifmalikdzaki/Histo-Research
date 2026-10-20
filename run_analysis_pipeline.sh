@@ -95,7 +95,7 @@ if [ ! -z "$PRESERVE_FROM" ]; then
     PRESERVE_CMD="--preserve-from $PRESERVE_FROM"
 fi
 
-python run_clustering_analysis.py \
+python src/run_clustering_analysis.py \
     --base-dir "$BASE_DIR" \
     --k $K \
     --methods $METHODS \
@@ -114,7 +114,7 @@ echo ""
 echo "===================================================================================================="
 echo "🧪 STEP 2: Computing Statistical Significance"
 echo "===================================================================================================="
-python compute_statistical_significance.py \
+python src/compute_statistical_significance.py \
     --input "$OUTPUT_DIR/raw_clustering_metrics.csv" \
     --baseline baseline \
     --output "$OUTPUT_DIR/clustering_summary.csv" \
@@ -132,7 +132,7 @@ echo ""
 echo "===================================================================================================="
 echo "📈 STEP 3: Generating Visualization Plots"
 echo "===================================================================================================="
-python generate_clustering_plots.py \
+python src/generate_clustering_plots.py \
     --input "$OUTPUT_DIR/clustering_summary.csv" \
     --tests "$OUTPUT_DIR/statistical_tests.csv" \
     --output-dir "$FIGURES_DIR"
@@ -148,7 +148,7 @@ echo ""
 echo "===================================================================================================="
 echo "📝 STEP 4: Generating LaTeX Tables"
 echo "===================================================================================================="
-python generate_latex_tables.py \
+python src/generate_latex_tables.py \
     --summary "$OUTPUT_DIR/clustering_summary.csv" \
     --tests "$OUTPUT_DIR/statistical_tests.csv" \
     --output-dir "$TABLES_DIR"

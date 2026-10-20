@@ -28,6 +28,9 @@ results/statistical_tests_corrected.csv
 .pytest_cache/
 .ruff_cache/
 
+# graphify knowledge-graph output (regenerable)
+graphify-out/
+
 
 # JOIV revision: Hub-upload staging bulk (already on private Hub repos)
 joiv_revision/hf/dataset_staging/

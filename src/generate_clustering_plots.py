@@ -41,17 +41,7 @@ plt.rcParams.update({
 })
 
 
-def load_data(summary_path: str, tests_path: str | None = None):
-    """Load summary and statistical tests data."""
-    summary_df = pd.read_csv(summary_path)
-    print(f"✓ Loaded summary: {len(summary_df)} rows")
-
-    tests_df = None
-    if tests_path and Path(tests_path).exists():
-        tests_df = pd.read_csv(tests_path)
-        print(f"✓ Loaded statistical tests: {len(tests_df)} rows")
-
-    return summary_df, tests_df
+from utils.reporting import load_data
 
 
 def get_significance_stars(p_value: float) -> str:
@@ -69,7 +59,7 @@ def get_significance_stars(p_value: float) -> str:
 
 def plot_metric_comparison(
     summary_df: pd.DataFrame,
-    tests_df: pd.DataFrame,
+    tests_df: pd.DataFrame | None,
     metric: str,
     metric_display: str,
     method: str,
@@ -140,7 +130,7 @@ def plot_metric_comparison(
 
 def plot_all_metrics_combined(
     summary_df: pd.DataFrame,
-    tests_df: pd.DataFrame,
+    tests_df: pd.DataFrame | None,
     method: str,
     output_path: str
 ):

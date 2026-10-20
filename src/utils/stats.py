@@ -8,7 +8,7 @@ present in only one copy). Import from here instead of duplicating.
 
 import numpy as np
 
-__all__ = ["compute_cohens_d", "format_mean_std"]
+__all__ = ["compute_cohens_d", "format_mean_std", "summarize_values"]
 
 
 def compute_cohens_d(group1, group2) -> float:
@@ -40,6 +40,34 @@ def compute_cohens_d(group1, group2) -> float:
         return 0.0
 
     return float(np.mean(diffs) / sd)
+
+
+def summarize_values(values) -> dict:
+    """Mean/std/min/max aggregation kernel shared by both stats paths.
+
+    ``evaluate_stats`` (per-run dicts) and ``compute_statistical_significance``
+    (summary DataFrames) each re-implemented this; the estimators are
+    identical: arithmetic mean, sample std (``ddof=1``), ``0.0`` std for a
+    single value. Returns numpy scalars exactly as the callers computed
+    before — each caller keeps its own ``float()`` wrapping.
+
+    Args:
+        values: Non-empty sequence of finite numbers (callers drop
+            missing entries first).
+
+    Raises:
+        ValueError: On an empty input.
+    """
+    arr = np.asarray(list(values), dtype=float)
+    if len(arr) == 0:
+        raise ValueError("summarize_values() requires at least one value")
+    return {
+        "mean": np.mean(arr),
+        "std": np.std(arr, ddof=1) if len(arr) > 1 else 0.0,
+        "min": np.min(arr),
+        "max": np.max(arr),
+        "n": len(arr),
+    }
 
 
 def format_mean_std(mean: float, std: float, decimals: int = 4) -> str:
