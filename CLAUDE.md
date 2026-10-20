@@ -17,7 +17,7 @@ uv pip install -e ".[dev]"
 
 ## Commands
 
-Training (main entrypoint — `main.py` is a stub, ignore it):
+Training (the main entrypoint):
 
 ```bash
 histodae train \
@@ -68,7 +68,7 @@ histodae cluster --base-dir auto_analysis --k 6 \
   - `src/histodae/training/{embedding_io,reports,hparams,lifecycle}.py` — mixins
   - `src/histodae/analysis/auto_analysis.py` (`AutomaticAnalyzer`) assembles `attention`, `batch`, `wandb_logging`, `locking`, `viz`, `viz_dashboard`, `viz_components` and `embedding_cluster` mixins.
 - **Namespace**: `histodae` is the *only* installed package. Everything lives under `src/histodae/<layer>/` and is imported as `histodae.<layer>.<module>`. The flat names (`histodata`, `metadata`, `clustering_metrics`, `clustering_objective`, `models`, `utils`, ...) are **deprecated aliases** that re-point `sys.modules` at the canonical module, so `import histodata` and `from histodae.data.datasets import ...` are the *same module object*. There is no `src.*` import path any more — `src/` is not a package. `tests/test_namespace.py` and `tests/test_module_independence.py` pin both invariants.
-- **Console scripts**: after `uv pip install -e ".[dev]"`, entrypoints are `histodae` (the unified click group: `train`, `extract`, `pipeline`, `cluster`, `stats`, `plots`, `tables`, `evaluate`, `data hepar|pannuke`) plus the per-stage `histodae-train`, `histodae-extract`, `histodae-pipeline`, `histodae-cluster`, `histodae-stats`, `histodae-plots`, `histodae-tables`, `histodae-evaluate`, `histodae-make-hepar-csv`, `histodae-make-pannuke-csv`. The root `*.py` files are thin shims that put this checkout's `src/` first on `sys.path` so a clone always runs its own code. `import histodae` exposes the package surface lazily (`get_model`, metrics, data) without pulling torch/lightning/wandb.
+- **Console scripts**: after `uv pip install -e ".[dev]"`, entrypoints are `histodae` (the unified click group: `train`, `extract`, `pipeline`, `cluster`, `stats`, `plots`, `tables`, `evaluate`, `per-magnification`, `biology`, `interpretability`, `profile`, `regenerate-viz`, `data hepar|pannuke`) plus the per-stage `histodae-train`, `histodae-extract`, `histodae-pipeline`, `histodae-cluster`, `histodae-stats`, `histodae-plots`, `histodae-tables`, `histodae-evaluate`, `histodae-make-hepar-csv`, `histodae-make-pannuke-csv`, `histodae-per-magnification`, `histodae-biology`, `histodae-interpretability`, `histodae-profile`, `histodae-regenerate-viz`. The root `*.py` files are thin shims that put this checkout's `src/` first on `sys.path` so a clone always runs its own code. `import histodae` exposes the package surface lazily (`get_model`, metrics, data) without pulling torch/lightning/wandb.
 - **Config**: `src/histodae/config/experiment.yaml` is the centralized hyperparameter source (latent_dim 128, n_clusters 5, KAN grid/spline, ECA kernel, BAM reduction, lr, etc.); `src/histodae/config/wandb.yaml` holds the W&B defaults. Both ship as package data, so they resolve regardless of the working directory. `--config-path` seeds the argparse *defaults* from the experiment config (explicit CLI flags still win) and is opt-in — omitting it keeps the historical built-in defaults. `config/experiment_config.yaml` and `config/wandb_config.yaml` at the repo root no longer exist.
 
 

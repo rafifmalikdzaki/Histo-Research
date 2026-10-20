@@ -171,8 +171,10 @@ histodae pipeline \
     --k 6
 ```
 
-Add `--config-path config/experiment.yaml` to seed the hyperparameters from
-the packaged experiment config (explicit CLI flags still win).
+Add `--config-path experiment` to seed the hyperparameters from the packaged
+experiment config (explicit CLI flags still win). `--config-path` takes
+either the packaged config name `experiment` or a path to a YAML
+file.
 
 ### 4. Evaluate Results
 
@@ -212,10 +214,12 @@ All experiments are driven by the corrected pipeline
 their biology metadata, clusters them, and runs the paired, Holm-corrected
 statistics. The older per-experiment orchestrators
 (`run_multi_seed_experiments.py`, `run_ablation_study.py`,
-`sensitivity_analysis.py`, `cross_domain_eval.py`, `profile_runtime.py`)
-were removed: they passed flags the training script no longer accepts and
-had no metadata-extraction step, which is why their results were not
-reproducible.
+`sensitivity_analysis.py`, `cross_domain_eval.py`) were removed: they
+passed flags the training script no longer accepts and had no
+metadata-extraction step, which is why their results were not reproducible.
+(`profile_runtime.py` was retired at the same time but is live again as
+`histodae profile`, since the reviewer response cites it for the
+profiling protocol.)
 
 ### Main results + ablation study
 

@@ -25,6 +25,30 @@ def _get(cfg: dict[str, Any], *path: str, default: Any = None) -> Any:
     return node
 
 
+def _load_config_file(config_path: str | Path) -> dict[str, Any]:
+    """Load a config from a path, or from a packaged config by name.
+
+    ``--config-path`` accepts either a filesystem path or the bare name of the
+    packaged experiment config, so the shipped defaults can
+    be used without depending on the working directory.
+    """
+    import yaml
+
+    path = Path(config_path)
+    if path.is_file():
+        config = yaml.safe_load(path.read_text())
+        if not isinstance(config, dict):
+            raise ValueError(f"Experiment config must be a YAML mapping: {path}")
+        return config
+
+    if str(config_path) in ("experiment", EXPERIMENT_CONFIG):
+        return load_config(EXPERIMENT_CONFIG)
+
+    raise FileNotFoundError(
+        f"Config not found: {config_path!r}; supply a YAML file or 'experiment'"
+    )
+
+
 def config_defaults(config_path: str | Path | None = None) -> dict[str, Any]:
     """Return argparse defaults derived from an experiment config file.
 
@@ -36,9 +60,7 @@ def config_defaults(config_path: str | Path | None = None) -> dict[str, Any]:
     if config_path is None:
         cfg = load_config(EXPERIMENT_CONFIG)
     else:
-        import yaml
-
-        cfg = yaml.safe_load(Path(config_path).read_text()) or {}
+        cfg = _load_config_file(config_path)
 
     defaults: dict[str, Any] = {}
 

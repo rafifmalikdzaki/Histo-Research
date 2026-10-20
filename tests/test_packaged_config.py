@@ -86,3 +86,37 @@ def test_packaged_configs_are_valid_yaml(name):
 
     data = yaml.safe_load(config_path(name).read_text())
     assert isinstance(data, dict)
+
+
+@pytest.mark.parametrize("name", ["experiment", "experiment.yaml"])
+def test_training_config_name_is_cwd_independent(name, monkeypatch, tmp_path):
+    from histodae.training.config import config_defaults
+
+    expected = config_defaults()
+    monkeypatch.chdir(tmp_path)
+    assert config_defaults(name) == expected
+
+
+def test_explicit_training_config_wins_over_packaged_name(monkeypatch, tmp_path):
+    from histodae.training.config import config_defaults
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "experiment").write_text("experiment:\n  seed: 123\n")
+    assert config_defaults("experiment") == {"seed": 123}
+
+
+@pytest.mark.parametrize("content", ["", "- not\n- a mapping\n", "42"])
+def test_training_config_rejects_non_mapping_yaml(content, tmp_path):
+    from histodae.training.config import config_defaults
+
+    path = tmp_path / "invalid.yaml"
+    path.write_text(content)
+    with pytest.raises(ValueError, match="YAML mapping"):
+        config_defaults(path)
+
+
+def test_missing_explicit_config_does_not_fall_back(tmp_path):
+    from histodae.training.config import config_defaults
+
+    with pytest.raises(FileNotFoundError, match="Config not found"):
+        config_defaults(tmp_path / "experiment.yaml")
