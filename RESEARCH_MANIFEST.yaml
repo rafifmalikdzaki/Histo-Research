@@ -17,9 +17,10 @@ hub:
   visibility: private (never make public without ethics confirmation)
   code_bundle:
     path: code/histodae_code.bundle                 # in the model repo
-    commit: 2e6e766e                                # rebuilt 2026-10-20 (was 8d0612a9, 31 behind)
-    published: 2026-10-20                           # HF commit 85799cf4e0aeefcab40bd9acafb4977dad2ceb0d
-    note: "gpukc_sweep.sh now rolls an existing clone onto this bundle, so publishing a new one is enough to roll the sweep forward" 
+    hub_commit: 85799cf4e0aeefcab40bd9acafb4977dad2ceb0d   # immutable id of the uploaded bytes
+    built_from: "main @ 2e6e766e"                   # the namespace migration; was 8d0612a9 (31 behind)
+    published: 2026-10-20
+    note: "gpukc_sweep.sh now rolls an existing clone onto this bundle, so publishing a new one is enough to roll the sweep forward. The bundle carries the code; it trails main by any later doc-only commits (this entry included), which do not affect the sweep" 
 compute:
   host: gpu-kc (labkc-comm1, 2x RTX 3060 12GB)
   project_dir: /mnt/home/dzakirm/histodae_joiv
