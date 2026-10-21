@@ -34,10 +34,12 @@ _EXPORTS: dict[str, str] = {
     "parse_hepar_filename": "histodae.data.metadata",
     "CANONICAL_GROUPS": "histodae.data.metadata",
     # clustering
+    "CLUSTERING_METHODS": "histodae.clustering.algorithms",
     "NORMALIZERS": "histodae.clustering.metrics",
     "external_metrics": "histodae.clustering.metrics",
     "internal_metrics": "histodae.clustering.metrics",
     "normalize_embeddings": "histodae.clustering.metrics",
+    "run_clustering": "histodae.clustering.algorithms",
     "xie_beni": "histodae.clustering.metrics",
     "DECClusteringLoss": "histodae.clustering.dec",
     "LatentProjectionHead": "histodae.clustering.dec",

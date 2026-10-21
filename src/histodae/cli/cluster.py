@@ -19,9 +19,8 @@ warnings.filterwarnings('ignore')
 
 import numpy as np
 import pandas as pd
-from sklearn.cluster import BisectingKMeans, KMeans
-from sklearn.mixture import GaussianMixture
 
+from histodae.clustering import CLUSTERING_METHODS, run_clustering
 from histodae.clustering.metrics import (
     NORMALIZERS,
     external_metrics,
@@ -172,21 +171,6 @@ def load_embeddings(exp_dir: Path) -> tuple[np.ndarray, pd.DataFrame | None] | N
     return embeddings, meta
 
 
-def run_clustering(embeddings: np.ndarray, method: str, k: int = 6) -> np.ndarray:
-    """Run clustering algorithm on embeddings."""
-    if method == 'bisecting_kmeans':
-        model = BisectingKMeans(n_clusters=k, random_state=42, n_init=10)
-    elif method == 'kmeans':
-        model = KMeans(n_clusters=k, random_state=42, n_init=10, max_iter=300)
-    elif method == 'gmm':
-        model = GaussianMixture(n_components=k, random_state=42, n_init=5)
-    else:
-        raise ValueError(f"Unknown clustering method: {method}")
-
-    labels = model.fit_predict(embeddings)
-    return labels
-
-
 def process_experiment(exp_dir: Path, k: int, methods: list[str],
                         normalize: str = "standardize_l2") -> list[dict]:
     """Process a single experiment directory.
@@ -262,7 +246,8 @@ def main(argv: list[str] | None = None):
     parser.add_argument('--k', type=int, default=6,
                         help='Number of clusters (default: 6)')
     parser.add_argument('--methods', type=str, nargs='+',
-                        default=['bisecting_kmeans', 'kmeans', 'gmm'],
+                        default=list(CLUSTERING_METHODS),
+                        choices=list(CLUSTERING_METHODS),
                         help='Clustering methods to use')
     parser.add_argument('--output', type=str, default='results/raw_clustering_metrics.csv',
                         help='Output CSV file path')

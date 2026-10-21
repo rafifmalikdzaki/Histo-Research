@@ -37,6 +37,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from histodae.clustering import CLUSTERING_METHODS, run_clustering
 from histodae.clustering.metrics import NORMALIZERS, normalize_embeddings
 
 ASSOC_COLUMNS = ["treatment_group", "diet", "magnification"]
@@ -84,21 +85,6 @@ def enrichment_table(labels: np.ndarray, groups: np.ndarray) -> pd.DataFrame:
     with np.errstate(divide="ignore", invalid="ignore"):
         ratio = np.where(expected > 0, ct.values / expected, np.nan)
     return pd.DataFrame(ratio, index=ct.index, columns=ct.columns)
-
-
-def run_clustering(embeddings: np.ndarray, method: str, k: int) -> np.ndarray:
-    from sklearn.cluster import BisectingKMeans, KMeans
-    from sklearn.mixture import GaussianMixture
-
-    if method == "kmeans":
-        model = KMeans(n_clusters=k, random_state=42, n_init=10)
-    elif method == "bisecting_kmeans":
-        model = BisectingKMeans(n_clusters=k, random_state=42, n_init=10)
-    elif method == "gmm":
-        model = GaussianMixture(n_components=k, random_state=42, n_init=5)
-    else:
-        raise ValueError(f"Unknown method {method}")
-    return model.fit_predict(embeddings)
 
 
 def export_montages(meta: pd.DataFrame, labels: np.ndarray, embeddings: np.ndarray,
@@ -167,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--metadata", type=Path, required=True)
     ap.add_argument("--k", type=int, default=6)
     ap.add_argument("--method", default="kmeans",
-                    choices=["kmeans", "bisecting_kmeans", "gmm"])
+                    choices=list(CLUSTERING_METHODS))
     ap.add_argument("--normalize", default="standardize_l2", choices=list(NORMALIZERS))
     ap.add_argument("--output-dir", type=Path, default=Path("pathologist_review"))
     ap.add_argument("--no-montages", action="store_true")

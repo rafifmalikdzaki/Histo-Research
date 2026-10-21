@@ -35,6 +35,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from histodae.clustering.metrics import (
+    NORMALIZERS,
     external_metrics,
     internal_metrics,
     normalize_embeddings,
@@ -148,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--run-dir", type=Path, required=True)
     ap.add_argument("--phase", default="val", choices=["train", "val"])
     ap.add_argument("--k", type=int, default=6)
-    ap.add_argument("--normalize", default="standardize_l2")
+    ap.add_argument("--normalize", default="standardize_l2", choices=list(NORMALIZERS))
     ap.add_argument("--tsne", action="store_true", help="Use t-SNE instead of PCA (slower).")
     args = ap.parse_args(argv)
     return run(args.run_dir, args.phase, args.k, args.normalize, args.tsne)

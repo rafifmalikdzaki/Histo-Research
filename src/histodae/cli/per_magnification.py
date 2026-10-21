@@ -28,7 +28,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from histodae.clustering import CLUSTERING_METHODS, run_clustering
 from histodae.clustering.metrics import (
+    NORMALIZERS,
     external_metrics,
     internal_metrics,
     normalize_embeddings,
@@ -37,8 +39,6 @@ from histodae.clustering.metrics import (
 
 def run(embeddings_path: Path, metadata_path: Path, output: Path,
         normalize: str, method: str, min_per_stratum: int) -> int:
-    from sklearn.cluster import BisectingKMeans, KMeans
-
     emb = np.load(embeddings_path)
     meta = pd.read_csv(metadata_path)
     if len(emb) != len(meta):
@@ -52,10 +52,7 @@ def run(embeddings_path: Path, metadata_path: Path, output: Path,
         if k < 2 or len(X) <= k:
             print(f"  skip {tag}: too few treatments/samples")
             continue
-        if method == "bisecting_kmeans":
-            labels = BisectingKMeans(n_clusters=k, random_state=42, n_init=10).fit_predict(X)
-        else:
-            labels = KMeans(n_clusters=k, random_state=42, n_init=10).fit_predict(X)
+        labels = run_clustering(X, method, k)
         im = internal_metrics(X, labels)
         ext = external_metrics(sub["treatment_group"].to_numpy(), labels, prefix="treat_")
         diet = external_metrics(sub["diet"].to_numpy(), labels, prefix="diet_") \
@@ -109,8 +106,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--embeddings", type=Path, required=True)
     ap.add_argument("--metadata", type=Path, required=True)
     ap.add_argument("--output", type=Path, required=True)
-    ap.add_argument("--normalize", default="standardize_l2")
-    ap.add_argument("--method", default="kmeans", choices=["kmeans", "bisecting_kmeans"])
+    ap.add_argument("--normalize", default="standardize_l2", choices=list(NORMALIZERS))
+    ap.add_argument("--method", default="kmeans", choices=list(CLUSTERING_METHODS))
     ap.add_argument("--min-per-stratum", type=int, default=100)
     args = ap.parse_args(argv)
     return run(args.embeddings, args.metadata, args.output, args.normalize,
